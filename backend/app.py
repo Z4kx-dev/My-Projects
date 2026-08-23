@@ -137,12 +137,9 @@ def discover_worlds() -> list[dict[str, Any]]:
     result: list[dict[str, Any]] = []
     if not WORLDS_DIR.exists():
         return result
-
-    # Pastas 001/002/003 são mantidas como mundos reais por compatibilidade.
     for child in sorted(WORLDS_DIR.iterdir()):
         if child.is_dir() and re.fullmatch(r"\d{3}", child.name):
             result.append(world_metadata(child.name))
-
     for kind in ("real", "fantasia"):
         folder = WORLDS_DIR / kind
         if not folder.is_dir():
@@ -150,7 +147,6 @@ def discover_worlds() -> list[dict[str, Any]]:
         for child in sorted(folder.iterdir()):
             if child.is_dir() and re.fullmatch(r"\d{3}", child.name):
                 result.append(world_metadata(f"{kind}:{child.name}"))
-
     return sorted(result, key=lambda item: (item.get("tipo", "real"), item.get("numero", "999"), item["id"]))
 
 
@@ -161,7 +157,7 @@ def next_world_id(kind: str) -> str:
     for number in range(1, 1000):
         candidate = f"{number:03d}"
         if candidate not in used:
-            return candidate if kind == "real" and not (WORLDS_DIR / candidate).exists() else f"{kind}:{candidate}"
+            return candidate if kind == "real" else f"fantasia:{candidate}"
     raise RuntimeError("Não há IDs disponíveis.")
 
 
@@ -228,13 +224,11 @@ def read_world_document(world_id: str) -> str:
         return ""
     root = world_dir(world_id)
     number = parse_world_id(world_id)[2]
-    candidates = (root / f"mundo{number}.docx", root / "mundo.docx")
-    for path in candidates:
+    for path in (root / f"mundo{number}.docx", root / "mundo.docx"):
         if path.exists():
             try:
                 document = Document(str(path))
-                text = "\n".join(p.text for p in document.paragraphs if p.text.strip())
-                return text[:50000]
+                return "\n".join(p.text for p in document.paragraphs if p.text.strip())[:50000]
             except Exception as exc:
                 app.logger.warning("Falha lendo DOCX %s: %r", path, exc)
     return ""
@@ -249,35 +243,23 @@ def build_context(world_id: str, chat_id: str) -> list[dict[str, str]]:
     metadata = world_metadata(world_id)
     memory = memory_snapshot(world_id)
     document = read_world_document(world_id)
-    system = (
-        SYSTEM_PROMPT
-        + "\n\nMETADADOS DO MUNDO:\n" + json.dumps(metadata, ensure_ascii=False)
-        + "\n\nMEMÓRIA E ESTADO PERSISTENTE:\n" + json.dumps(memory, ensure_ascii=False)[:60000]
-    )
+    system = SYSTEM_PROMPT + "\n\nMETADADOS DO MUNDO:\n" + json.dumps(metadata, ensure_ascii=False) + "\n\nMEMÓRIA E ESTADO PERSISTENTE:\n" + json.dumps(memory, ensure_ascii=False)[:60000]
     if document:
         system += "\n\nDOCUMENTO CANÔNICO DO MUNDO:\n" + document
-    messages = [{"role": "system", "content": system}]
-    messages.extend(chat.get("mensagens", [])[-40:])
-    return messages
+    return [{"role": "system", "content": system}] + chat.get("mensagens", [])[-40:]
 
 
 def ollama_tags() -> tuple[bool, list[str]]:
     try:
         response = requests.get(f"{OLLAMA_URL}/api/tags", timeout=5)
         response.raise_for_status()
-        models = [item.get("name", "") for item in response.json().get("models", [])]
-        return True, models
+        return True, [item.get("name", "") for item in response.json().get("models", [])]
     except (requests.RequestException, ValueError, AttributeError):
         return False, []
 
 
 def ollama_stream(messages: list[dict[str, str]]):
-    response = requests.post(
-        f"{OLLAMA_URL}/api/chat",
-        json={"model": OLLAMA_MODEL, "messages": messages, "stream": True},
-        stream=True,
-        timeout=OLLAMA_TIMEOUT,
-    )
+    response = requests.post(f"{OLLAMA_URL}/api/chat", json={"model": OLLAMA_MODEL, "messages": messages, "stream": True}, stream=True, timeout=OLLAMA_TIMEOUT)
     response.raise_for_status()
     for line in response.iter_lines(decode_unicode=True):
         if not line:
@@ -293,11 +275,7 @@ def ollama_stream(messages: list[dict[str, str]]):
 
 
 def ollama_complete(messages: list[dict[str, str]]) -> str:
-    response = requests.post(
-        f"{OLLAMA_URL}/api/chat",
-        json={"model": OLLAMA_MODEL, "messages": messages, "stream": False},
-        timeout=OLLAMA_TIMEOUT,
-    )
+    response = requests.post(f"{OLLAMA_URL}/api/chat", json={"model": OLLAMA_MODEL, "messages": messages, "stream": False}, timeout=OLLAMA_TIMEOUT)
     response.raise_for_status()
     return response.json().get("message", {}).get("content", "")
 
@@ -327,19 +305,12 @@ def persist_memory(world_id: str, user_message: str, assistant_message: str) -> 
     try:
         prompt = (
             MEMORY_PROMPT
-            + "\n
-WORLD_ID: " + world_id
-            + "\n
-JOGADOR:\n" + user_message
-            + "\n
-IA:\n" + assistant_message
-            + "\n
-MEMÓRIA ATUAL:\n" + json.dumps(memory_snapshot(world_id), ensure_ascii=False)[:50000]
+            + "\n\nWORLD_ID: " + world_id
+            + "\n\nJOGADOR:\n" + user_message
+            + "\n\nIA:\n" + assistant_message
+            + "\n\nMEMÓRIA ATUAL:\n" + json.dumps(memory_snapshot(world_id), ensure_ascii=False)[:50000]
         )
-        content = ollama_complete([
-            {"role": "system", "content": MEMORY_PROMPT},
-            {"role": "user", "content": prompt},
-        ])
+        content = ollama_complete([{"role": "system", "content": MEMORY_PROMPT}, {"role": "user", "content": prompt}])
         result = extract_json(content) or {"updates": []}
         valid, rejected = carmilla.validator.validate_updates(result.get("updates", []))
         applied = carmilla.memory.apply_updates(world_id, valid)
@@ -363,13 +334,7 @@ def frontend_file(path: str):
 @app.get("/api/health")
 def health():
     connected, models = ollama_tags()
-    return jsonify({
-        "ok": True,
-        "ollama": connected,
-        "model": OLLAMA_MODEL,
-        "models": models,
-        "carmilla": carmilla.status(),
-    })
+    return jsonify({"ok": True, "ollama": connected, "model": OLLAMA_MODEL, "models": models, "carmilla": carmilla.status()})
 
 
 @app.get("/api/carmilla")
@@ -449,13 +414,9 @@ def api_files(world_id: str):
         tree = []
         for category in (*CATEGORIES, "chat", "historico"):
             folder = root / category
-            children = []
-            for path in sorted(folder.rglob("*")):
-                if path.is_file() and not path.name.endswith(".tmp"):
-                    children.append(str(path.relative_to(root)).replace(os.sep, "/"))
-            tree.append({"name": category, "type": "folder", "files": children})
-        docs = [p.name for p in root.glob("*.docx")]
-        tree.append({"name": "documentos", "type": "folder", "files": docs})
+            files = [str(path.relative_to(root)).replace(os.sep, "/") for path in sorted(folder.rglob("*")) if path.is_file() and not path.name.endswith(".tmp")]
+            tree.append({"name": category, "type": "folder", "files": files})
+        tree.append({"name": "documentos", "type": "folder", "files": [path.name for path in root.glob("*.docx")]})
         return jsonify({"world_id": world_id, "tree": tree})
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
@@ -469,7 +430,6 @@ def api_chat():
     user_message = str(body.get("message") or "").strip()
     if not world_id or not chat_id or not user_message:
         return jsonify({"error": "world_id, chat_id e message são obrigatórios."}), 400
-
     try:
         ensure_world(world_id)
         normalize_chat_id(chat_id)
@@ -492,12 +452,7 @@ def api_chat():
             app.logger.exception("Falha no streaming")
             yield "\n\n[[STREAM_ERROR]]" + str(exc)
 
-    return Response(generate(), mimetype="text/plain; charset=utf-8", headers={
-        "Cache-Control": "no-cache, no-store, must-revalidate",
-        "X-Accel-Buffering": "no",
-        "X-RPG-World": world_id,
-        "X-RPG-Chat": normalize_chat_id(chat_id),
-    })
+    return Response(generate(), mimetype="text/plain; charset=utf-8", headers={"Cache-Control": "no-cache, no-store, must-revalidate", "X-Accel-Buffering": "no", "X-RPG-World": world_id, "X-RPG-Chat": normalize_chat_id(chat_id)})
 
 
 if __name__ == "__main__":
