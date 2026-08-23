@@ -1,0 +1,13 @@
+{
+  "version": "1.0",
+  "mode": "simulation_first",
+  "authority": {
+    "player": "intent_only",
+    "simulation_engine": "state_and_consequences",
+    "guardian": "validation_and_persistence",
+    "llm": "interpretation_and_narration"
+  },
+  "features": [
+    "deterministic_simulation", "physical_state", "continuous_time", "calendar", "dynamic_weather", "human_needs", "body_systems_health", "persistent_injuries", "era_appropriate_medicine", "psychology", "imperfect_memory", "perception", "agent_knowledge", "autonomous_npcs", "npc_interactions", "dynamic_economy", "supply_chains", "dynamic_politics", "law", "crime_investigation", "group_reputation", "individual_relationships", "practice_progression", "equipment_wear", "physical_inventory", "llm_hallucination_guard", "auditable_transactions", "immutable_event_log", "snapshots_backups", "player_simulator_narrator_separation", "npc_decision_model", "continuous_personality", "conflicting_goals", "temporary_emotions", "emotional_memory", "habit_formation", "cognitive_biases", "limited_cognition", "personality_change", "child_development", "visual_field", "spatial_audio", "lighting", "line_of_sight", "rumor_network", "information_provenance", "geography", "hydrology", "soil_agriculture", "vegetation", "fauna", "ecosystems", "fire_propagation", "natural_disasters", "erosion", "pollution", "structural_integrity", "maintenance", "sanitation", "water_networks", "energy", "transport_capacity", "traffic", "logistics", "families", "genealogy", "inheritance", "marriage_social_bonds", "social_stratification", "migration", "urbanization", "demography", "banking_credit", "debt", "bankruptcy", "businesses", "labor_market", "taxation_public_budget", "regional_markets", "arbitrage"
+  ]
+}
