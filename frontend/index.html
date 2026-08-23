@@ -1,684 +1,143 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="pt-BR">
-
 <head>
-
-    <meta charset="UTF-8">
-
-    <meta
-        name="viewport"
-        content="width=device-width, initial-scale=1.0"
-    >
-
-    <title>RPG Simulator</title>
-
-    <link
-        rel="stylesheet"
-        href="style.css"
-    >
-
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#212121">
+  <meta name="color-scheme" content="dark light">
+  <title>RPG Simulator</title>
+  <link rel="stylesheet" href="style.css">
 </head>
-
 <body>
+  <div id="app" class="app">
+    <aside id="sidebar" class="sidebar" aria-label="Navegação">
+      <div class="sidebar-header">
+        <button id="new-chat" class="new-chat" type="button">
+          <span class="new-chat-plus">＋</span>
+          <span>Novo chat</span>
+        </button>
+      </div>
 
-<div class="app">
+      <nav class="sidebar-nav">
+        <button id="worlds-button" class="sidebar-button" type="button">
+          <span class="icon">◇</span><span>Mundos</span>
+        </button>
+        <button id="current-world-button" class="sidebar-button" type="button">
+          <span class="icon">◈</span><span id="current-world-name">Nenhum mundo</span>
+        </button>
+      </nav>
 
-    <!-- ==================================================
-         SIDEBAR
-         ================================================== -->
-
-    <aside
-        id="sidebar"
-        class="sidebar"
-    >
-
-        <div class="sidebar-top">
-
-            <button
-                id="new-chat"
-                class="new-chat"
-                type="button"
-            >
-
-                <span>＋</span>
-
-                <span>
-                    Novo chat
-                </span>
-
-            </button>
-
+      <section class="world-tree-section">
+        <div class="tree-title-row">
+          <span class="section-title">Conversas</span>
+          <button id="tree-refresh" class="small-action" type="button" title="Atualizar">↻</button>
         </div>
+        <div id="chat-tree" class="chat-tree" aria-live="polite"></div>
+      </section>
 
+      <div class="sidebar-spacer"></div>
 
-        <!-- ==================================================
-             RPG
-             ================================================== -->
-
-        <div class="sidebar-section">
-
-            <div class="section-title">
-                RPG
-            </div>
-
-
-            <!-- Mundo atual -->
-
-            <button
-                id="current-world-button"
-                class="sidebar-button"
-                type="button"
-            >
-
-                <span class="icon">
-                    ◈
-                </span>
-
-                <span
-                    id="current-world-name"
-                >
-                    Nenhum mundo
-                </span>
-
-            </button>
-
-
-            <!-- Mundos -->
-
-            <button
-                id="worlds-button"
-                class="sidebar-button"
-                type="button"
-            >
-
-                <span class="icon">
-                    ◇
-                </span>
-
-                <span>
-                    Mundos
-                </span>
-
-            </button>
-
-
-            <!-- ==================================================
-                 ÁRVORE DE CHATS
-                 ================================================== -->
-
-            <div
-                id="chat-tree"
-                class="chat-tree"
-            >
-
-                <!--
-                    Preenchido pelo JavaScript.
-
-                    Exemplo:
-
-                    🌎 Mundo Real
-                      ├ Mundo 001
-                      │  ├ Chat 001
-                      │  └ Chat 002
-                      │
-                      └ Mundo 002
-
-                    ✨ Mundo Fantasia
-                      └ Mundo 001
-                         ├ Chat 001
-                         └ Chat 002
-                -->
-
-            </div>
-
-
-            <!-- Memória -->
-
-            <button
-                id="memory-button"
-                class="sidebar-button"
-                type="button"
-            >
-
-                <span class="icon">
-                    ▤
-                </span>
-
-                <span>
-                    Memória
-                </span>
-
-            </button>
-
-        </div>
-
-
-        <!-- ==================================================
-             SISTEMA
-             ================================================== -->
-
-        <div class="sidebar-section">
-
-            <div class="section-title">
-                Sistema
-            </div>
-
-
-            <button
-                id="settings-button"
-                class="sidebar-button"
-                type="button"
-            >
-
-                <span class="icon">
-                    ⚙
-                </span>
-
-                <span>
-                    Configurações
-                </span>
-
-            </button>
-
-        </div>
-
-
-        <!-- ==================================================
-             PERFIL
-             ================================================== -->
-
-        <div class="sidebar-bottom">
-
-            <button
-                id="profile-button"
-                class="profile-button"
-                type="button"
-            >
-
-                <div class="avatar">
-                    R
-                </div>
-
-                <div class="profile-name">
-                    Usuário
-                </div>
-
-                <span class="more">
-                    ⋯
-                </span>
-
-            </button>
-
-        </div>
-
+      <div class="sidebar-footer">
+        <button id="memory-button" class="sidebar-button" type="button">
+          <span class="icon">▤</span><span>Memória</span>
+        </button>
+        <button id="settings-button" class="sidebar-button" type="button">
+          <span class="icon">⚙</span><span>Configurações</span>
+        </button>
+        <button id="profile-button" class="profile-button" type="button">
+          <span class="avatar">R</span>
+          <span class="profile-name">Usuário</span>
+          <span class="more">⋯</span>
+        </button>
+      </div>
     </aside>
 
-
-    <!-- ==================================================
-         ÁREA PRINCIPAL
-         ================================================== -->
+    <div id="sidebar-overlay" class="sidebar-overlay" hidden></div>
 
     <main class="main">
-
-
-        <!-- ==================================================
-             HEADER
-             ================================================== -->
-
-        <header class="topbar">
-
-            <button
-                id="sidebar-toggle"
-                class="icon-button mobile-only"
-                type="button"
-                title="Abrir menu"
-            >
-                ☰
-            </button>
-
-
-            <!-- Nome do chat atual -->
-
-            <button
-                id="model-selector"
-                class="model-selector"
-                type="button"
-            >
-
-                <span id="current-chat-name">
-                    RPG Simulator
-                </span>
-
-                <span class="chevron">
-                    ▾
-                </span>
-
-            </button>
-
-
-            <div class="topbar-actions">
-
-                <button
-                    id="share-button"
-                    class="icon-button"
-                    type="button"
-                    title="Compartilhar"
-                >
-                    ↗
-                </button>
-
-            </div>
-
-        </header>
-
-
-        <!-- ==================================================
-             CHAT
-             ================================================== -->
-
-        <section
-            id="chat"
-            class="chat"
-        >
-
-            <div
-                id="messages"
-                class="messages"
-            >
-
-                <div class="welcome">
-
-                    <div class="welcome-icon">
-                        ✦
-                    </div>
-
-                    <h1>
-                        Como posso ajudar?
-                    </h1>
-
-                    <p>
-                        Seu simulador de RPG está pronto.
-                    </p>
-
-                </div>
-
-            </div>
-
-        </section>
-
-
-        <!-- ==================================================
-             COMPOSER
-             ================================================== -->
-
-        <div class="composer-container">
-
-            <form
-                id="chat-form"
-                class="composer"
-            >
-
-                <textarea
-                    id="message"
-                    name="message"
-                    placeholder="Mensagem para o RPG Simulator"
-                    rows="1"
-                    autocomplete="off"
-                    spellcheck="true"
-                ></textarea>
-
-
-                <div class="composer-bottom">
-
-
-                    <div class="composer-tools">
-
-                        <button
-                            id="attach-button"
-                            type="button"
-                            class="tool-button"
-                            title="Anexar arquivo"
-                        >
-                            ＋
-                        </button>
-
-
-                        <button
-                            id="tools-button"
-                            type="button"
-                            class="tool-button"
-                            title="Ferramentas"
-                        >
-                            ⚙
-                        </button>
-
-                    </div>
-
-
-                    <div class="composer-right">
-
-                        <span
-                            id="input-hint"
-                            class="input-hint"
-                        >
-                            Enter para enviar
-                        </span>
-
-
-                        <button
-                            type="submit"
-                            id="send-button"
-                            class="send-button"
-                            disabled
-                            title="Enviar"
-                        >
-                            ↑
-                        </button>
-
-                    </div>
-
-                </div>
-
-            </form>
-
-
-            <div class="disclaimer">
-
-                O RPG Simulator pode cometer erros.
-                Verifique informações importantes.
-
-            </div>
-
+      <header class="topbar">
+        <div class="topbar-left">
+          <button id="sidebar-toggle" class="icon-button mobile-only" type="button" title="Abrir menu">☰</button>
+          <button id="model-selector" class="model-selector" type="button" aria-haspopup="menu" aria-expanded="false">
+            <span id="current-chat-name">RPG Simulator</span><span class="chevron">▾</span>
+          </button>
         </div>
+        <div class="topbar-actions">
+          <button id="share-button" class="icon-button" type="button" title="Compartilhar">↗</button>
+        </div>
+      </header>
 
+      <section id="chat" class="chat" aria-label="Conversa">
+        <div id="messages" class="messages">
+          <div class="welcome" id="welcome">
+            <div class="welcome-icon">✦</div>
+            <h1>RPG Simulator</h1>
+            <p>Selecione um mundo e comece a simulação.</p>
+          </div>
+        </div>
+      </section>
+
+      <div class="composer-container">
+        <form id="chat-form" class="composer" autocomplete="off">
+          <textarea id="message" name="message" rows="1" maxlength="20000" placeholder="Mensagem para o RPG Simulator" aria-label="Mensagem"></textarea>
+          <div class="composer-bottom">
+            <div class="composer-tools">
+              <button id="attach-button" class="tool-button" type="button" title="Anexos">＋</button>
+              <button id="tools-button" class="tool-button" type="button" title="Ferramentas">⚙</button>
+            </div>
+            <div class="composer-right">
+              <span id="input-hint" class="input-hint">Enter para enviar · Shift+Enter para nova linha</span>
+              <button id="send-button" class="send-button" type="submit" disabled title="Enviar">↑</button>
+            </div>
+          </div>
+        </form>
+        <div class="disclaimer">O RPG Simulator pode cometer erros. Verifique informações importantes.</div>
+      </div>
     </main>
+  </div>
 
-</div>
-
-
-<!-- ==================================================
-     PAINEL DE MUNDOS
-     ================================================== -->
-
-<div
-    id="world-panel"
-    class="world-panel"
->
-
-    <div class="world-panel-inner">
-
-        <div class="world-panel-header">
-
-            <div>
-
-                <div class="world-panel-title">
-                    Mundos
-                </div>
-
-                <div class="world-panel-subtitle">
-                    Selecione o universo da simulação
-                </div>
-
-            </div>
-
-
-            <button
-                id="close-world-panel"
-                class="icon-button"
-                type="button"
-                title="Fechar"
-            >
-                ×
-            </button>
-
-        </div>
-
-
-        <!-- ==================================================
-             MUNDO REAL
-             ================================================== -->
-
-        <section
-            class="world-category"
-            data-category="real"
-        >
-
-            <button
-                class="world-category-header"
-                type="button"
-            >
-
-                <span class="category-icon">
-                    🌎
-                </span>
-
-                <span class="category-name">
-                    Mundo Real
-                </span>
-
-                <span class="category-chevron">
-                    ▾
-                </span>
-
-            </button>
-
-
-            <div
-                id="real-worlds"
-                class="world-category-list"
-            >
-
-                <!-- Mundos reais inseridos pelo JS -->
-
-            </div>
-
+  <div id="world-panel" class="modal-layer" hidden>
+    <div class="modal-backdrop" data-close="world-panel"></div>
+    <section class="modal world-modal" role="dialog" aria-modal="true" aria-labelledby="world-panel-title">
+      <header class="modal-header">
+        <div><h2 id="world-panel-title">Mundos</h2><p>Selecione o universo da simulação.</p></div>
+        <button id="close-world-panel" class="icon-button" type="button" title="Fechar">×</button>
+      </header>
+      <div class="modal-body world-panel-body">
+        <section class="world-category" data-category="real">
+          <button class="world-category-header" type="button"><span>🌎</span><strong>Mundo Real</strong><span class="category-chevron">▾</span></button>
+          <div id="real-worlds" class="world-category-list"></div>
         </section>
-
-
-        <!-- ==================================================
-             MUNDO FANTASIA
-             ================================================== -->
-
-        <section
-            class="world-category"
-            data-category="fantasia"
-        >
-
-            <button
-                class="world-category-header"
-                type="button"
-            >
-
-                <span class="category-icon">
-                    ✨
-                </span>
-
-                <span class="category-name">
-                    Mundo Fantasia
-                </span>
-
-                <span class="category-chevron">
-                    ▾
-                </span>
-
-            </button>
-
-
-            <div
-                id="fantasia-worlds"
-                class="world-category-list"
-            >
-
-                <!-- Mundos fantasia inseridos pelo JS -->
-
-            </div>
-
+        <section class="world-category" data-category="fantasia">
+          <button class="world-category-header" type="button"><span>✨</span><strong>Mundo Fantasia</strong><span class="category-chevron">▾</span></button>
+          <div id="fantasia-worlds" class="world-category-list"></div>
         </section>
+        <button id="create-world-button" class="new-world-button" type="button">＋ Criar mundo</button>
+      </div>
+    </section>
+  </div>
 
+  <div id="current-world-panel" class="modal-layer" hidden>
+    <div class="modal-backdrop" data-close="current-world-panel"></div>
+    <section class="modal" role="dialog" aria-modal="true">
+      <header class="modal-header"><div><h2 id="current-world-panel-title">Mundo</h2><p id="current-world-panel-type">Mundo</p></div><button id="close-current-world-panel" class="icon-button" type="button">×</button></header>
+      <div id="current-world-info" class="modal-body world-info"></div>
+    </section>
+  </div>
 
-        <!-- ==================================================
-             CRIAR MUNDO
-             ================================================== -->
+  <div id="memory-panel" class="modal-layer" hidden>
+    <div class="modal-backdrop" data-close="memory-panel"></div>
+    <section class="modal" role="dialog" aria-modal="true">
+      <header class="modal-header"><div><h2>Memória</h2><p>Estado persistente administrado pelo Guardian.</p></div><button id="close-memory-panel" class="icon-button" type="button">×</button></header>
+      <div id="memory-tree" class="modal-body memory-tree">
+        <div class="memory-note">A memória é mantida no backend. Esta interface não altera arquivos diretamente.</div>
+      </div>
+    </section>
+  </div>
 
-        <button
-            id="create-world-button"
-            class="new-world-button"
-            type="button"
-        >
+  <div id="toast-container" class="toast-container" aria-live="polite"></div>
+  <div id="loading" class="loading-overlay" hidden><div class="loading-spinner"></div><span>Carregando…</span></div>
 
-            <span>
-                ＋
-            </span>
-
-            <span>
-                Criar mundo
-            </span>
-
-        </button>
-
-    </div>
-
-</div>
-
-
-<!-- ==================================================
-     PAINEL DO MUNDO ATUAL
-     ================================================== -->
-
-<div
-    id="current-world-panel"
-    class="overlay-panel"
->
-
-    <div class="overlay-panel-inner">
-
-        <div class="overlay-panel-header">
-
-            <div>
-
-                <div
-                    id="current-world-panel-title"
-                    class="overlay-title"
-                >
-                    Mundo
-                </div>
-
-                <div
-                    id="current-world-panel-type"
-                    class="overlay-subtitle"
-                >
-                    Mundo Real
-                </div>
-
-            </div>
-
-
-            <button
-                id="close-current-world-panel"
-                class="icon-button"
-                type="button"
-            >
-                ×
-            </button>
-
-        </div>
-
-
-        <div
-            id="current-world-info"
-            class="world-info"
-        >
-
-            <!-- Informações do mundo inseridas pelo JS -->
-
-        </div>
-
-    </div>
-
-</div>
-
-
-<!-- ==================================================
-     PAINEL DE MEMÓRIA
-     ================================================== -->
-
-<div
-    id="memory-panel"
-    class="overlay-panel"
->
-
-    <div class="overlay-panel-inner">
-
-        <div class="overlay-panel-header">
-
-            <div>
-
-                <div class="overlay-title">
-                    Memória
-                </div>
-
-                <div class="overlay-subtitle">
-                    Estrutura interna do mundo
-                </div>
-
-            </div>
-
-
-            <button
-                id="close-memory-panel"
-                class="icon-button"
-                type="button"
-            >
-                ×
-            </button>
-
-        </div>
-
-
-        <!-- File Tree -->
-
-        <div
-            id="memory-tree"
-            class="memory-tree"
-        >
-
-            <div class="memory-folder">
-                📁 Personagem
-            </div>
-
-            <div class="memory-folder">
-                📁 NPCs
-            </div>
-
-            <div class="memory-folder">
-                📁 Política
-            </div>
-
-            <div class="memory-folder">
-                📁 Economia
-            </div>
-
-            <div class="memory-folder">
-                📁 Diário
-            </div>
-
-            <div class="memory-folder">
-                📁 Eventos
-            </div>
-
-        </div>
-
-    </div>
-
-</div>
-
-
-<!-- ==================================================
-     JAVASCRIPT
-     ================================================== -->
-
-<script src="app.js"></script>
-
+  <script src="app.js"></script>
 </body>
-
 </html>
