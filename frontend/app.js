@@ -1,2110 +1,634 @@
-// ==================================================
-// RPG SIMULATOR — APP.JS
-// ==================================================
-
-
-// ==================================================
-// ELEMENTOS
-// ==================================================
-
-const form =
-    document.getElementById("chat-form");
-
-const input =
-    document.getElementById("message");
-
-const chat =
-    document.getElementById("chat");
-
-const messages =
-    document.getElementById("messages");
-
-const sendButton =
-    document.getElementById("send-button");
-
-const sidebar =
-    document.getElementById("sidebar");
-
-const sidebarToggle =
-    document.getElementById("sidebar-toggle");
-
-const newChat =
-    document.getElementById("new-chat");
-
-const worldsButton =
-    document.getElementById("worlds-button");
-
-const worldPanel =
-    document.getElementById("world-panel");
-
-const closeWorldPanel =
-    document.getElementById("close-world-panel");
-
-const createWorldButton =
-    document.getElementById("create-world-button");
-
-const realWorlds =
-    document.getElementById("real-worlds");
-
-const fantasiaWorlds =
-    document.getElementById("fantasia-worlds");
-
-const currentWorldButton =
-    document.getElementById("current-world-button");
-
-const currentWorldName =
-    document.getElementById("current-world-name");
-
-const currentChatName =
-    document.getElementById("current-chat-name");
-
-const chatTree =
-    document.getElementById("chat-tree");
-
-const memoryButton =
-    document.getElementById("memory-button");
-
-const memoryPanel =
-    document.getElementById("memory-panel");
-
-const closeMemoryPanel =
-    document.getElementById("close-memory-panel");
-
-const currentWorldPanel =
-    document.getElementById("current-world-panel");
-
-const closeCurrentWorldPanel =
-    document.getElementById(
-        "close-current-world-panel"
-    );
-
-const currentWorldInfo =
-    document.getElementById(
-        "current-world-info"
-    );
-
-const currentWorldPanelTitle =
-    document.getElementById(
-        "current-world-panel-title"
-    );
-
-const currentWorldPanelType =
-    document.getElementById(
-        "current-world-panel-type"
-    );
-
-
-// ==================================================
-// ESTADO
-// ==================================================
-
-let gerando = false;
-
-let controller = null;
-
-let velocidadeDigitacao = 35;
-
-
-// ID do mundo atualmente selecionado.
-//
-// IMPORTANTE:
-// nunca usamos o nome do mundo como identidade.
-
-let mundoAtualId = null;
-
-
-// ID do chat atualmente selecionado.
-
-let chatAtualId = null;
-
-
-// Cache dos mundos carregados.
-
-let mundos = [];
-
-
-// Cache dos chats do mundo atual.
-
-let chatsAtuais = [];
-
-
-// ==================================================
-// UTILIDADES
-// ==================================================
-
-function esperar(ms) {
-
-    return new Promise(resolve => {
-
-        setTimeout(resolve, ms);
-
-    });
-
-}
-
-
-function escapeHtml(text) {
-
-    return String(text)
-
-        .replace(/&/g, "&amp;")
-
-        .replace(/</g, "&lt;")
-
-        .replace(/>/g, "&gt;")
-
-        .replace(/"/g, "&quot;")
-
-        .replace(/'/g, "&#039;");
-
-}
-
-
-// ==================================================
-// MARKDOWN
-// ==================================================
-
-function markdownToHtml(text) {
-
-    let html =
-        escapeHtml(text);
-
-
-    // Código em bloco
-
-    html = html.replace(
-        /```([\s\S]*?)```/g,
-        (_, code) => {
-
-            return `
-                <pre>
-                    <code>${code.trim()}</code>
-                </pre>
-            `;
-
-        }
-    );
-
-
-    // Código inline
-
-    html = html.replace(
-        /`([^`\n]+)`/g,
-        "<code>$1</code>"
-    );
-
-
-    // Títulos
-
-    html = html.replace(
-        /^### (.*)$/gm,
-        "<h3>$1</h3>"
-    );
-
-    html = html.replace(
-        /^## (.*)$/gm,
-        "<h2>$1</h2>"
-    );
-
-    html = html.replace(
-        /^# (.*)$/gm,
-        "<h1>$1</h1>"
-    );
-
-
-    // Negrito
-
-    html = html.replace(
-        /\*\*(.*?)\*\*/g,
-        "<strong>$1</strong>"
-    );
-
-
-    // Itálico
-
-    html = html.replace(
-        /(?<!\*)\*([^*\n]+)\*(?!\*)/g,
-        "<em>$1</em>"
-    );
-
-
-    // Citações
-
-    html = html.replace(
-        /^&gt; (.*)$/gm,
-        "<blockquote>$1</blockquote>"
-    );
-
-
-    // Listas simples
-
-    html = html.replace(
-        /(?:^|\n)([-*]) (.+)/g,
-        "\n<li>$2</li>"
-    );
-
-
-    html = html.replace(
-        /(<li>.*?<\/li>)(?:\s*<br>)?(?=<li>)/gs,
-        "$1"
-    );
-
-
-    // Quebras de linha
-
-    html = html.replace(
-        /\n/g,
-        "<br>"
-    );
-
-
-    return html;
-
-}
-
-
-// ==================================================
-// ADICIONAR MENSAGEM
-// ==================================================
-
-function addMessage(
-    type,
-    text = "",
-    renderMarkdown = true
-) {
-
-    const message =
-        document.createElement("div");
-
-    message.className =
-        `message ${type}`;
-
-
-    const content =
-        document.createElement("div");
-
-    content.className =
-        "message-content";
-
-
-    if (
-        type === "assistant" &&
-        renderMarkdown
-    ) {
-
-        content.innerHTML =
-            markdownToHtml(text);
-
-    } else {
-
-        content.textContent =
-            text;
-
+(() => {
+  "use strict";
+
+  const $ = (id) => document.getElementById(id);
+  const form = $("chat-form");
+  const input = $("message");
+  const chat = $("chat");
+  const messages = $("messages");
+  const sendButton = $("send-button");
+  const sidebar = $("sidebar");
+  const sidebarToggle = $("sidebar-toggle");
+  const sidebarOverlay = $("sidebar-overlay");
+  const newChatButton = $("new-chat");
+  const worldsButton = $("worlds-button");
+  const worldPanel = $("world-panel");
+  const closeWorldPanel = $("close-world-panel");
+  const createWorldButton = $("create-world-button");
+  const realWorlds = $("real-worlds");
+  const fantasiaWorlds = $("fantasia-worlds");
+  const currentWorldButton = $("current-world-button");
+  const currentWorldName = $("current-world-name");
+  const currentChatName = $("current-chat-name");
+  const chatTree = $("chat-tree");
+  const treeRefresh = $("tree-refresh");
+  const memoryButton = $("memory-button");
+  const memoryPanel = $("memory-panel");
+  const closeMemoryPanel = $("close-memory-panel");
+  const currentWorldPanel = $("current-world-panel");
+  const closeCurrentWorldPanel = $("close-current-world-panel");
+  const currentWorldInfo = $("current-world-info");
+  const currentWorldPanelTitle = $("current-world-panel-title");
+  const currentWorldPanelType = $("current-world-panel-type");
+  const toastContainer = $("toast-container");
+  const loading = $("loading");
+  const welcome = $("welcome");
+  const modelSelector = $("model-selector");
+
+  const state = {
+    worlds: [],
+    worldId: localStorage.getItem("rpg.worldId") || null,
+    chatId: localStorage.getItem("rpg.chatId") || null,
+    generating: false,
+    controller: null,
+    categoryOpen: {
+      real: localStorage.getItem("rpg.category.real") !== "0",
+      fantasia: localStorage.getItem("rpg.category.fantasia") !== "0"
     }
+  };
 
+  function normalizeId(value) {
+    const text = String(value ?? "").trim();
+    return /^\d+$/.test(text) ? text.padStart(3, "0") : text;
+  }
 
-    message.appendChild(content);
+  function escapeHtml(value) {
+    return String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/\"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
 
-    messages.appendChild(message);
+  function markdown(text) {
+    let source = escapeHtml(text);
+    const blocks = [];
+    source = source.replace(/```(?:[a-zA-Z0-9_-]+)?\n?([\s\S]*?)```/g, (_, code) => {
+      const token = `@@CODE${blocks.length}@@`;
+      blocks.push(`<pre><code>${code.trim()}</code></pre>`);
+      return token;
+    });
+    source = source.replace(/`([^`\n]+)`/g, "<code>$1</code>");
+    source = source.replace(/^### (.+)$/gm, "<h3>$1</h3>");
+    source = source.replace(/^## (.+)$/gm, "<h2>$1</h2>");
+    source = source.replace(/^# (.+)$/gm, "<h1>$1</h1>");
+    source = source.replace(/^&gt; (.+)$/gm, "<blockquote>$1</blockquote>");
+    source = source.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+    source = source.replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g, "<em>$1</em>");
+    source = source.replace(/(?:^|\n)((?:[-*] .+(?:\n|$))+)/g, (_, list) => {
+      const items = list.trim().split("\n").map(line => `<li>${line.replace(/^[-*] /, "")}</li>`).join("");
+      return `\n<ul>${items}</ul>\n`;
+    });
+    source = source.replace(/\n{2,}/g, "</p><p>");
+    source = source.replace(/\n/g, "<br>");
+    source = `<p>${source}</p>`;
+    source = source.replace(/<p>(\s*<(?:h[1-3]|ul|pre|blockquote))/g, "$1");
+    source = source.replace(/(<\/(?:h[1-3]|ul|pre|blockquote)>)<\/p>/g, "$1");
+    blocks.forEach((block, index) => {
+      source = source.replace(`@@CODE${index}@@`, block);
+    });
+    return source;
+  }
 
+  function toast(message, type = "") {
+    const node = document.createElement("div");
+    node.className = `toast ${type}`;
+    node.textContent = message;
+    toastContainer.appendChild(node);
+    setTimeout(() => node.remove(), 3600);
+  }
 
-    chat.scrollTop =
-        chat.scrollHeight;
+  function setLoading(value) {
+    loading.hidden = !value;
+  }
 
+  function saveSelection() {
+    if (state.worldId) localStorage.setItem("rpg.worldId", state.worldId);
+    else localStorage.removeItem("rpg.worldId");
+    if (state.chatId) localStorage.setItem("rpg.chatId", state.chatId);
+    else localStorage.removeItem("rpg.chatId");
+  }
 
-    return content;
+  function closeSidebar() {
+    sidebar.classList.remove("open");
+    sidebarOverlay.hidden = true;
+  }
 
-}
+  function openSidebar() {
+    sidebar.classList.add("open");
+    sidebarOverlay.hidden = false;
+  }
 
+  function showModal(node) {
+    if (!node) return;
+    node.hidden = false;
+    document.body.style.overflow = "hidden";
+  }
 
-// ==================================================
-// API JSON
-// ==================================================
+  function hideModal(node) {
+    if (!node) return;
+    node.hidden = true;
+    if ([worldPanel, currentWorldPanel, memoryPanel].every(panel => panel.hidden)) {
+      document.body.style.overflow = "";
+    }
+  }
 
-async function apiJson(
-    url,
-    options = {}
-) {
-
-    const response =
-        await fetch(
-            url,
-            options
-        );
-
-
-    const contentType =
-        response.headers.get(
-            "content-type"
-        ) || "";
-
-
+  async function api(url, options = {}) {
+    const response = await fetch(url, {
+      credentials: "same-origin",
+      ...options,
+      headers: {
+        ...(options.body ? { "Content-Type": "application/json" } : {}),
+        ...(options.headers || {})
+      }
+    });
+    const contentType = response.headers.get("content-type") || "";
     if (!response.ok) {
-
-        const texto =
-            await response.text();
-
-        throw new Error(
-            texto ||
-            `Erro HTTP ${response.status}`
-        );
-
+      const body = await response.text();
+      let message = body;
+      try { message = JSON.parse(body).error || body; } catch (_) {}
+      throw new Error(message || `Erro HTTP ${response.status}`);
     }
-
-
-    if (
-        !contentType.includes(
-            "application/json"
-        )
-    ) {
-
-        const texto =
-            await response.text();
-
-        throw new Error(
-            "O servidor não retornou JSON. " +
-            texto.substring(0, 200)
-        );
-
+    if (!contentType.includes("application/json")) {
+      throw new Error("O servidor não retornou JSON.");
     }
-
-
     return response.json();
+  }
 
-}
+  function worldCategory(world) {
+    const raw = String(world.tipo || world.type || world.categoria || world.category || "").toLowerCase();
+    if (["fantasia", "fantasy", "ficcao", "fiction"].includes(raw)) return "fantasia";
+    return "real";
+  }
 
+  function worldById(id) {
+    return state.worlds.find(world => normalizeId(world.id) === normalizeId(id)) || null;
+  }
 
-// ==================================================
-// CARREGAR MUNDOS
-// ==================================================
+  function chatById(world, id) {
+    return (world?.chats || []).find(chat => normalizeId(chat.id) === normalizeId(id)) || null;
+  }
 
-async function carregarMundos() {
+  function renderWorldCards() {
+    renderWorldList(realWorlds, state.worlds.filter(w => worldCategory(w) === "real"));
+    renderWorldList(fantasiaWorlds, state.worlds.filter(w => worldCategory(w) === "fantasia"));
+  }
 
-    try {
-
-        const data =
-            await apiJson(
-                "/api/worlds"
-            );
-
-
-        mundos =
-            Array.isArray(data.mundos)
-                ? data.mundos
-                : [];
-
-
-        renderizarMundos();
-
-
-        // Se o mundo atual não existe mais,
-        // limpa a seleção.
-
-        if (
-            mundoAtualId &&
-            !mundos.some(
-                mundo =>
-                    mundo.id === mundoAtualId
-            )
-        ) {
-
-            mundoAtualId = null;
-
-            chatAtualId = null;
-
-        }
-
-
-        // Seleciona automaticamente o primeiro mundo
-        // somente se nenhum estiver selecionado.
-
-        if (
-            !mundoAtualId &&
-            mundos.length > 0
-        ) {
-
-            await selecionarMundo(
-                mundos[0].id
-            );
-
-        } else {
-
-            atualizarInterfaceAtual();
-
-        }
-
-
-    } catch (error) {
-
-        console.error(
-            "Erro ao carregar mundos:",
-            error
-        );
-
+  function renderWorldList(container, worlds) {
+    container.replaceChildren();
+    if (!worlds.length) {
+      const empty = document.createElement("div");
+      empty.className = "world-empty";
+      empty.textContent = "Nenhum mundo disponível.";
+      container.appendChild(empty);
+      return;
     }
-
-}
-
-
-// ==================================================
-// RENDERIZAR MUNDOS
-// ==================================================
-
-function renderizarMundos() {
-
-    if (realWorlds) {
-
-        realWorlds.innerHTML = "";
-
-    }
-
-
-    if (fantasiaWorlds) {
-
-        fantasiaWorlds.innerHTML = "";
-
-    }
-
-
-    for (
-        const mundo of mundos
-    ) {
-
-        // O ID é obrigatório.
-
-        if (!mundo.id) {
-
-            continue;
-
-        }
-
-
-        const tipo =
-            mundo.tipo ||
-            (
-                mundo.id.startsWith(
-                    "fantasia:"
-                )
-                    ? "fantasia"
-                    : "real"
-            );
-
-
-        const button =
-            document.createElement("button");
-
-        button.type =
-            "button";
-
-        button.className =
-            "world-item";
-
-
-        // IDENTIDADE REAL DO ELEMENTO
-
-        button.dataset.worldId =
-            mundo.id;
-
-
-        const icon =
-            tipo === "fantasia"
-                ? "✨"
-                : "🌎";
-
-
-        button.innerHTML = `
-            <span class="world-item-icon">
-                ${icon}
-            </span>
-
-            <span class="world-item-name">
-                ${escapeHtml(
-                    mundo.nome ||
-                    mundo.id
-                )}
-            </span>
-        `;
-
-
-        button.addEventListener(
-            "click",
-            async () => {
-
-                await selecionarMundo(
-                    mundo.id
-                );
-
-                fecharPainelMundos();
-
-            }
-        );
-
-
-        if (
-            mundo.id ===
-            mundoAtualId
-        ) {
-
-            button.classList.add(
-                "active"
-            );
-
-        }
-
-
-        if (
-            tipo === "fantasia"
-        ) {
-
-            fantasiaWorlds?.appendChild(
-                button
-            );
-
-        } else {
-
-            realWorlds?.appendChild(
-                button
-            );
-
-        }
-
-    }
-
-}
-
-
-// ==================================================
-// SELECIONAR MUNDO
-// ==================================================
-
-async function selecionarMundo(
-    worldId
-) {
-
-    // ID é a única referência aceita.
-
-    if (!worldId) {
-
-        return;
-
-    }
-
-
-    const mundo =
-        mundos.find(
-            item =>
-                item.id === worldId
-        );
-
-
-    if (!mundo) {
-
-        console.error(
-            "Mundo não encontrado pelo ID:",
-            worldId
-        );
-
-        return;
-
-    }
-
-
-    mundoAtualId =
-        mundo.id;
-
-
-    chatAtualId =
-        null;
-
-
-    atualizarInterfaceAtual();
-
-
-    await carregarChats(
-        mundo.id
-    );
-
-
-    renderizarMundos();
-
-
-    atualizarInterfaceAtual();
-
-}
-
-
-// ==================================================
-// CARREGAR CHATS
-// ==================================================
-
-async function carregarChats(
-    worldId
-) {
-
-    try {
-
-        const data =
-            await apiJson(
-                `/api/worlds/${encodeURIComponent(worldId)}/chats`
-            );
-
-
-        chatsAtuais =
-            Array.isArray(data.chats)
-                ? data.chats
-                : [];
-
-
-        renderizarChats();
-
-
-        // Se houver chat, seleciona o primeiro.
-
-        if (
-            chatsAtuais.length > 0
-        ) {
-
-            await selecionarChat(
-                chatsAtuais[0].id
-            );
-
-        } else {
-
-            limparChat();
-
-        }
-
-
-    } catch (error) {
-
-        console.error(
-            "Erro ao carregar chats:",
-            error
-        );
-
-        chatsAtuais = [];
-
-        renderizarChats();
-
-        limparChat();
-
-    }
-
-}
-
-
-// ==================================================
-// RENDERIZAR ÁRVORE DE CHATS
-// ==================================================
-
-function renderizarChats() {
-
-    if (!chatTree) {
-
-        return;
-
-    }
-
-
-    chatTree.innerHTML = "";
-
-
-    if (!mundoAtualId) {
-
-        return;
-
-    }
-
-
-    const mundo =
-        mundos.find(
-            item =>
-                item.id === mundoAtualId
-        );
-
-
-    if (!mundo) {
-
-        return;
-
-    }
-
-
-    // Cabeçalho do mundo atual.
-
-    const worldHeader =
-        document.createElement("div");
-
-    worldHeader.className =
-        "chat-tree-world";
-
-
-    const worldIcon =
-        mundo.tipo === "fantasia"
-            ? "✨"
-            : "🌎";
-
-
-    worldHeader.innerHTML = `
-        <span>${worldIcon}</span>
-        <span>
-            ${escapeHtml(
-                mundo.nome ||
-                mundo.id
-            )}
-        </span>
-    `;
-
-
-    chatTree.appendChild(
-        worldHeader
-    );
-
-
-    // Lista de chats.
-
-    for (
-        const item of chatsAtuais
-    ) {
-
-        if (!item.id) {
-
-            continue;
-
-        }
-
-
-        const button =
-            document.createElement("button");
-
-        button.type =
-            "button";
-
-        button.className =
-            "chat-tree-item";
-
-
-        // ID do chat.
-
-        button.dataset.chatId =
-            item.id;
-
-
-        button.innerHTML = `
-            <span class="chat-tree-icon">
-                ◇
-            </span>
-
-            <span>
-                ${escapeHtml(
-                    item.nome ||
-                    item.id
-                )}
-            </span>
-        `;
-
-
-        if (
-            item.id ===
-            chatAtualId
-        ) {
-
-            button.classList.add(
-                "active"
-            );
-
-        }
-
-
-        button.addEventListener(
-            "click",
-            async () => {
-
-                await selecionarChat(
-                    item.id
-                );
-
-            }
-        );
-
-
-        chatTree.appendChild(
-            button
-        );
-
-    }
-
-}
-
-
-// ==================================================
-// SELECIONAR CHAT
-// ==================================================
-
-async function selecionarChat(
-    chatId
-) {
-
-    if (!chatId) {
-
-        return;
-
-    }
-
-
-    const chatEncontrado =
-        chatsAtuais.find(
-            item =>
-                item.id === chatId
-        );
-
-
-    if (!chatEncontrado) {
-
-        console.error(
-            "Chat não encontrado pelo ID:",
-            chatId
-        );
-
-        return;
-
-    }
-
-
-    chatAtualId =
-        chatEncontrado.id;
-
-
-    atualizarInterfaceAtual();
-
-    renderizarChats();
-
-
-    await carregarHistorico(
-        mundoAtualId,
-        chatAtualId
-    );
-
-}
-
-
-// ==================================================
-// CARREGAR HISTÓRICO
-// ==================================================
-
-async function carregarHistorico(
-    worldId,
-    chatId
-) {
-
-    if (
-        !worldId ||
-        !chatId
-    ) {
-
-        limparChat();
-
-        return;
-
-    }
-
-
-    try {
-
-        const data =
-            await apiJson(
-                `/api/worlds/${encodeURIComponent(worldId)}/chats/${encodeURIComponent(chatId)}`
-            );
-
-
-        messages.innerHTML = "";
-
-
-        const history =
-            Array.isArray(
-                data.mensagens
-            )
-                ? data.mensagens
-                : (
-                    Array.isArray(
-                        data.history
-                    )
-                        ? data.history
-                        : []
-                );
-
-
-        if (
-            history.length === 0
-        ) {
-
-            mostrarWelcome();
-
-            return;
-
-        }
-
-
-        for (
-            const item of history
-        ) {
-
-            const type =
-                item.role === "user"
-                    ? "user"
-                    : "assistant";
-
-
-            addMessage(
-                type,
-                item.content || "",
-                type === "assistant"
-            );
-
-        }
-
-
-    } catch (error) {
-
-        console.error(
-            "Erro ao carregar histórico:",
-            error
-        );
-
-
-        messages.innerHTML = "";
-
-
-        addMessage(
-            "assistant",
-            "Não foi possível carregar este chat."
-        );
-
-    }
-
-}
-
-
-// ==================================================
-// LIMPAR CHAT
-// ==================================================
-
-function limparChat() {
-
-    messages.innerHTML = "";
-
-    mostrarWelcome();
-
-}
-
-
-function mostrarWelcome() {
-
-    const welcome =
-        document.createElement("div");
-
-    welcome.className =
-        "welcome";
-
-
-    welcome.innerHTML = `
-        <div class="welcome-icon">
-            ✦
-        </div>
-
-        <h1>
-            Como posso ajudar?
-        </h1>
-
-        <p>
-            Seu simulador de RPG está pronto.
-        </p>
-    `;
-
-
-    messages.appendChild(
-        welcome
-    );
-
-}
-
-
-// ==================================================
-// ATUALIZAR INTERFACE
-// ==================================================
-
-function atualizarInterfaceAtual() {
-
-    const mundo =
-        mundos.find(
-            item =>
-                item.id === mundoAtualId
-        );
-
-
-    if (mundo) {
-
-        currentWorldName.textContent =
-            mundo.nome ||
-            mundo.id;
-
-    } else {
-
-        currentWorldName.textContent =
-            "Nenhum mundo";
-
-    }
-
-
-    const chatEncontrado =
-        chatsAtuais.find(
-            item =>
-                item.id === chatAtualId
-        );
-
-
-    if (chatEncontrado) {
-
-        currentChatName.textContent =
-            chatEncontrado.nome ||
-            chatEncontrado.id;
-
-    } else if (mundo) {
-
-        currentChatName.textContent =
-            mundo.nome ||
-            mundo.id;
-
-    } else {
-
-        currentChatName.textContent =
-            "RPG Simulator";
-
-    }
-
-}
-
-
-// ==================================================
-// NOVO CHAT
-// ==================================================
-
-async function criarChat() {
-
-    if (!mundoAtualId) {
-
-        alert(
-            "Selecione um mundo primeiro."
-        );
-
-        return;
-
-    }
-
-
-    if (gerando) {
-
-        return;
-
-    }
-
-
-    try {
-
-        const data =
-            await apiJson(
-                `/api/worlds/${encodeURIComponent(mundoAtualId)}/chats`,
-                {
-                    method: "POST",
-
-                    headers: {
-                        "Content-Type":
-                            "application/json"
-                    }
-                }
-            );
-
-
-        if (
-            data.chat &&
-            data.chat.id
-        ) {
-
-            await carregarChats(
-                mundoAtualId
-            );
-
-
-            await selecionarChat(
-                data.chat.id
-            );
-
-        } else {
-
-            await carregarChats(
-                mundoAtualId
-            );
-
-        }
-
-
-    } catch (error) {
-
-        console.error(
-            "Erro ao criar chat:",
-            error
-        );
-
-
-        alert(
-            "Não foi possível criar o chat."
-        );
-
-    }
-
-}
-
-
-// ==================================================
-// NOVO MUNDO
-// ==================================================
-
-async function criarMundo() {
-
-    const tipo =
-        prompt(
-            "Tipo do mundo:\n\n" +
-            "1 = Mundo Real\n" +
-            "2 = Mundo Fantasia"
-        );
-
-
-    if (
-        tipo !== "1" &&
-        tipo !== "2"
-    ) {
-
-        return;
-
-    }
-
-
-    const categoria =
-        tipo === "1"
-            ? "real"
-            : "fantasia";
-
-
-    try {
-
-        const data =
-            await apiJson(
-                "/api/worlds",
-                {
-                    method: "POST",
-
-                    headers: {
-                        "Content-Type":
-                            "application/json"
-                    },
-
-                    body: JSON.stringify({
-                        tipo: categoria
-                    })
-                }
-            );
-
-
-        await carregarMundos();
-
-
-        if (data.id) {
-
-            await selecionarMundo(
-                data.id
-            );
-
-        }
-
-
-    } catch (error) {
-
-        console.error(
-            "Erro ao criar mundo:",
-            error
-        );
-
-
-        alert(
-            "Não foi possível criar o mundo."
-        );
-
-    }
-
-}
-
-
-// ==================================================
-// ENVIAR MENSAGEM
-// ==================================================
-
-async function enviarMensagem() {
-
-    if (gerando) {
-
-        return;
-
-    }
-
-
-    if (!mundoAtualId) {
-
-        alert(
-            "Selecione um mundo primeiro."
-        );
-
-        return;
-
-    }
-
-
-    if (!chatAtualId) {
-
-        await criarChat();
-
-        if (!chatAtualId) {
-
-            return;
-
-        }
-
-    }
-
-
-    const message =
-        input.value.trim();
-
-
-    if (!message) {
-
-        return;
-
-    }
-
-
-    const welcome =
-        document.querySelector(
-            ".welcome"
-        );
-
-
-    if (welcome) {
-
-        welcome.remove();
-
-    }
-
-
-    addMessage(
-        "user",
-        message,
-        false
-    );
-
-
-    input.value = "";
-
-    ajustarAltura();
-
-
-    gerando = true;
-
-    controller =
-        new AbortController();
-
-
-    input.focus();
-
-    atualizarBotaoGeracao();
-
-
-    const respostaElement =
-        addMessage(
-            "assistant",
-            "",
-            false
-        );
-
-
-    respostaElement.innerHTML =
-        '<span class="typing-cursor">▍</span>';
-
-
-    let respostaCompleta = "";
-
-
-    try {
-
-        const response =
-            await fetch(
-                "/api/chat",
-                {
-                    method: "POST",
-
-                    headers: {
-                        "Content-Type":
-                            "application/json"
-                    },
-
-                    body: JSON.stringify({
-
-                        world_id:
-                            mundoAtualId,
-
-                        chat_id:
-                            chatAtualId,
-
-                        message:
-                            message
-
-                    }),
-
-                    signal:
-                        controller.signal
-
-                }
-            );
-
-
-        if (!response.ok) {
-
-            const errorText =
-                await response.text();
-
-            throw new Error(
-                errorText ||
-                `Erro HTTP ${response.status}`
-            );
-
-        }
-
-
-        if (!response.body) {
-
-            throw new Error(
-                "O navegador não suporta streaming."
-            );
-
-        }
-
-
-        const reader =
-            response.body.getReader();
-
-
-        const decoder =
-            new TextDecoder(
-                "utf-8"
-            );
-
-
-        while (true) {
-
-            const {
-                value,
-                done
-            } = await reader.read();
-
-
-            if (done) {
-
-                break;
-
-            }
-
-
-            const chunk =
-                decoder.decode(
-                    value,
-                    {
-                        stream: true
-                    }
-                );
-
-
-            for (
-                const caractere of chunk
-            ) {
-
-                respostaCompleta +=
-                    caractere;
-
-
-                if (
-                    respostaCompleta.includes(
-                        "[[STREAM_ERROR]]"
-                    )
-                ) {
-
-                    const partes =
-                        respostaCompleta.split(
-                            "[[STREAM_ERROR]]"
-                        );
-
-
-                    throw new Error(
-                        partes[1] ||
-                        "Erro durante o streaming."
-                    );
-
-                }
-
-
-                respostaElement.innerHTML =
-                    markdownToHtml(
-                        respostaCompleta
-                    ) +
-                    '<span class="typing-cursor">▍</span>';
-
-
-                chat.scrollTop =
-                    chat.scrollHeight;
-
-
-                if (
-                    velocidadeDigitacao > 0
-                ) {
-
-                    await esperar(
-                        velocidadeDigitacao
-                    );
-
-                }
-
-            }
-
-        }
-
-
-        respostaElement.innerHTML =
-            markdownToHtml(
-                respostaCompleta
-            );
-
-
-    } catch (error) {
-
-        if (
-            error.name ===
-            "AbortError"
-        ) {
-
-            if (!respostaCompleta) {
-
-                respostaElement.textContent =
-                    "Geração interrompida.";
-
-            } else {
-
-                respostaElement.innerHTML =
-                    markdownToHtml(
-                        respostaCompleta
-                    );
-
-            }
-
-
-        } else {
-
-            console.error(
-                "Erro:",
-                error
-            );
-
-
-            respostaElement.textContent =
-                "Erro: " +
-                error.message;
-
-        }
-
-
-    } finally {
-
-        gerando = false;
-
-        controller = null;
-
-        atualizarBotaoGeracao();
-
-        input.focus();
-
-    }
-
-}
-
-
-// ==================================================
-// BOTÃO DE GERAÇÃO
-// ==================================================
-
-function atualizarBotaoGeracao() {
-
-    if (gerando) {
-
-        sendButton.textContent =
-            "■";
-
-        sendButton.title =
-            "Parar geração";
-
-        sendButton.disabled =
-            false;
-
-        sendButton.classList.add(
-            "stop-button"
-        );
-
-    } else {
-
-        sendButton.textContent =
-            "↑";
-
-        sendButton.title =
-            "Enviar";
-
-        sendButton.classList.remove(
-            "stop-button"
-        );
-
-
-        sendButton.disabled =
-            input.value.trim().length === 0;
-
-    }
-
-}
-
-
-// ==================================================
-// PARAR GERAÇÃO
-// ==================================================
-
-sendButton.addEventListener(
-    "click",
-    event => {
-
-        if (!gerando) {
-
-            return;
-
-        }
-
-
-        event.preventDefault();
-
-
-        if (controller) {
-
-            controller.abort();
-
-        }
-
-    }
-);
-
-
-// ==================================================
-// FORMULÁRIO
-// ==================================================
-
-form.addEventListener(
-    "submit",
-    event => {
-
-        event.preventDefault();
-
-
-        if (gerando) {
-
-            return;
-
-        }
-
-
-        enviarMensagem();
-
-    }
-);
-
-
-// ==================================================
-// ENTER
-// ==================================================
-
-input.addEventListener(
-    "keydown",
-    event => {
-
-        if (
-            event.key !== "Enter"
-        ) {
-
-            return;
-
-        }
-
-
-        // Ctrl + Enter = quebra de linha
-
-        if (
-            event.ctrlKey
-        ) {
-
-            event.preventDefault();
-
-
-            const start =
-                input.selectionStart;
-
-            const end =
-                input.selectionEnd;
-
-
-            input.value =
-                input.value.substring(
-                    0,
-                    start
-                ) +
-                "\n" +
-                input.value.substring(
-                    end
-                );
-
-
-            input.selectionStart =
-                start + 1;
-
-            input.selectionEnd =
-                start + 1;
-
-
-            ajustarAltura();
-
-            return;
-
-        }
-
-
-        // Shift + Enter = quebra
-
-        if (
-            event.shiftKey
-        ) {
-
-            return;
-
-        }
-
-
-        // Enter = enviar
-
-        event.preventDefault();
-
-
-        if (!gerando) {
-
-            enviarMensagem();
-
-        }
-
-    }
-);
-
-
-// ==================================================
-// TEXTAREA
-// ==================================================
-
-function ajustarAltura() {
-
-    input.style.height =
-        "auto";
-
-
-    input.style.height =
-        Math.min(
-            input.scrollHeight,
-            180
-        ) + "px";
-
-
-    if (!gerando) {
-
-        sendButton.disabled =
-            input.value.trim().length === 0;
-
-    }
-
-}
-
-
-input.addEventListener(
-    "input",
-    ajustarAltura
-);
-
-
-// ==================================================
-// SIDEBAR
-// ==================================================
-
-if (sidebarToggle) {
-
-    sidebarToggle.addEventListener(
-        "click",
-        () => {
-
-            sidebar.classList.toggle(
-                "open"
-            );
-
-        }
-    );
-
-}
-
-
-// ==================================================
-// PAINEL DE MUNDOS
-// ==================================================
-
-function abrirPainelMundos() {
-
-    worldPanel?.classList.add(
-        "open"
-    );
-
-}
-
-
-function fecharPainelMundos() {
-
-    worldPanel?.classList.remove(
-        "open"
-    );
-
-}
-
-
-worldsButton?.addEventListener(
-    "click",
-    abrirPainelMundos
-);
-
-
-closeWorldPanel?.addEventListener(
-    "click",
-    fecharPainelMundos
-);
-
-
-// ==================================================
-// NOVO CHAT
-// ==================================================
-
-newChat?.addEventListener(
-    "click",
-    () => {
-
-        if (gerando) {
-
-            return;
-
-        }
-
-
-        criarChat();
-
-    }
-);
-
-
-// ==================================================
-// CRIAR MUNDO
-// ==================================================
-
-createWorldButton?.addEventListener(
-    "click",
-    criarMundo
-);
-
-
-// ==================================================
-// MUNDO ATUAL
-// ==================================================
-
-currentWorldButton?.addEventListener(
-    "click",
-    () => {
-
-        if (!mundoAtualId) {
-
-            abrirPainelMundos();
-
-            return;
-
-        }
-
-
-        const mundo =
-            mundos.find(
-                item =>
-                    item.id ===
-                    mundoAtualId
-            );
-
-
-        if (!mundo) {
-
-            return;
-
-        }
-
-
-        currentWorldPanelTitle.textContent =
-            mundo.nome ||
-            mundo.id;
-
-
-        currentWorldPanelType.textContent =
-            mundo.tipo === "fantasia"
-                ? "Mundo Fantasia"
-                : "Mundo Real";
-
-
-        currentWorldInfo.innerHTML = `
-
-            <div class="world-info-row">
-
-                <span>ID</span>
-
-                <strong>
-                    ${escapeHtml(
-                        mundo.id
-                    )}
-                </strong>
-
-            </div>
-
-
-            <div class="world-info-row">
-
-                <span>Nome</span>
-
-                <strong>
-                    ${escapeHtml(
-                        mundo.nome ||
-                        mundo.id
-                    )}
-                </strong>
-
-            </div>
-
-
-            <div class="world-info-row">
-
-                <span>Tipo</span>
-
-                <strong>
-                    ${mundo.tipo === "fantasia"
-                        ? "Fantasia"
-                        : "Real"}
-                </strong>
-
-            </div>
-
-        `;
-
-
-        currentWorldPanel?.classList.add(
-            "open"
-        );
-
-    }
-);
-
-
-// ==================================================
-// FECHAR MUNDO ATUAL
-// ==================================================
-
-closeCurrentWorldPanel?.addEventListener(
-    "click",
-    () => {
-
-        currentWorldPanel?.classList.remove(
-            "open"
-        );
-
-    }
-);
-
-
-// ==================================================
-// MEMÓRIA
-// ==================================================
-
-memoryButton?.addEventListener(
-    "click",
-    () => {
-
-        if (!mundoAtualId) {
-
-            alert(
-                "Selecione um mundo primeiro."
-            );
-
-            return;
-
-        }
-
-
-        memoryPanel?.classList.add(
-            "open"
-        );
-
-    }
-);
-
-
-closeMemoryPanel?.addEventListener(
-    "click",
-    () => {
-
-        memoryPanel?.classList.remove(
-            "open"
-        );
-
-    }
-);
-
-
-// ==================================================
-// CATEGORIAS DE MUNDO
-// ==================================================
-
-document
-    .querySelectorAll(
-        ".world-category-header"
-    )
-    .forEach(button => {
-
-        button.addEventListener(
-            "click",
-            () => {
-
-                const category =
-                    button.closest(
-                        ".world-category"
-                    );
-
-
-                category?.classList.toggle(
-                    "collapsed"
-                );
-
-            }
-        );
-
+    worlds.forEach(world => {
+      const id = normalizeId(world.id);
+      const card = document.createElement("button");
+      card.type = "button";
+      card.className = `world-card ${id === state.worldId ? "active" : ""}`;
+      card.dataset.worldId = id;
+      const count = Array.isArray(world.chats) ? world.chats.length : 0;
+      card.innerHTML = `<span class="world-card-id">${escapeHtml(id)}</span><span class="world-card-main"><span class="world-card-name">${escapeHtml(world.nome || `Mundo ${id}`)}</span><span class="world-card-meta">${count} ${count === 1 ? "chat" : "chats"}</span></span><span class="world-card-arrow">›</span>`;
+      card.addEventListener("click", () => selectWorld(id));
+      container.appendChild(card);
     });
+  }
 
-
-// ==================================================
-// FECHAR PAINÉIS CLICANDO FORA
-// ==================================================
-
-worldPanel?.addEventListener(
-    "click",
-    event => {
-
-        if (
-            event.target ===
-            worldPanel
-        ) {
-
-            fecharPainelMundos();
-
+  function renderTree() {
+    chatTree.replaceChildren();
+    const categories = [
+      ["real", "🌎", "Mundo Real"],
+      ["fantasia", "✨", "Mundo Fantasia"]
+    ];
+    categories.forEach(([category, icon, label]) => {
+      const worlds = state.worlds.filter(world => worldCategory(world) === category);
+      const section = document.createElement("div");
+      section.className = `tree-category ${state.categoryOpen[category] ? "" : "collapsed"}`;
+      const header = document.createElement("button");
+      header.type = "button";
+      header.className = "tree-category-header";
+      header.innerHTML = `<span class="tree-arrow">▾</span><span>${icon}</span><span>${label}</span>`;
+      header.addEventListener("click", () => {
+        state.categoryOpen[category] = !state.categoryOpen[category];
+        localStorage.setItem(`rpg.category.${category}`, state.categoryOpen[category] ? "1" : "0");
+        renderTree();
+      });
+      section.appendChild(header);
+      const items = document.createElement("div");
+      items.className = "tree-items";
+      worlds.forEach(world => {
+        const id = normalizeId(world.id);
+        const worldNode = document.createElement("div");
+        worldNode.className = "tree-world";
+        const worldHeader = document.createElement("button");
+        worldHeader.type = "button";
+        worldHeader.className = "tree-world-header";
+        worldHeader.innerHTML = `<span class="tree-arrow">▾</span><span class="tree-world-id">${escapeHtml(id)}</span><span class="tree-world-name">${escapeHtml(world.nome || `Mundo ${id}`)}</span>`;
+        worldHeader.addEventListener("click", () => selectWorld(id));
+        worldNode.appendChild(worldHeader);
+        const chats = document.createElement("div");
+        chats.className = "tree-chat-list";
+        (world.chats || []).forEach(chatData => {
+          const chatId = normalizeId(chatData.id);
+          const node = document.createElement("button");
+          node.type = "button";
+          node.className = `tree-chat ${id === state.worldId && chatId === state.chatId ? "active" : ""}`;
+          node.innerHTML = `<span class="tree-chat-icon">•</span><span>${escapeHtml(chatData.nome || `Chat ${chatId}`)}</span>`;
+          node.title = `Mundo ${id} · Chat ${chatId}`;
+          node.addEventListener("click", () => selectChat(id, chatId));
+          chats.appendChild(node);
+        });
+        if (!chats.children.length) {
+          const empty = document.createElement("div");
+          empty.className = "tree-empty";
+          empty.textContent = "Sem chats";
+          chats.appendChild(empty);
         }
+        worldNode.appendChild(chats);
+        items.appendChild(worldNode);
+      });
+      if (!worlds.length) {
+        const empty = document.createElement("div");
+        empty.className = "tree-empty";
+        empty.textContent = "Nenhum mundo";
+        items.appendChild(empty);
+      }
+      section.appendChild(items);
+      chatTree.appendChild(section);
+    });
+  }
 
+  function updateHeader() {
+    const world = worldById(state.worldId);
+    const chatData = chatById(world, state.chatId);
+    currentWorldName.textContent = world ? `${world.nome || `Mundo ${state.worldId}`} · ${normalizeId(world.id)}` : "Nenhum mundo";
+    currentChatName.textContent = chatData?.nome || (world ? `Mundo ${normalizeId(world.id)}` : "RPG Simulator");
+    renderTree();
+    renderWorldCards();
+  }
+
+  function clearMessages() {
+    messages.replaceChildren();
+  }
+
+  function addMessage(role, text = "") {
+    if (welcome?.isConnected) welcome.remove();
+    const wrapper = document.createElement("article");
+    wrapper.className = `message ${role}`;
+    const content = document.createElement("div");
+    content.className = "message-content";
+    if (role === "assistant") content.innerHTML = markdown(text);
+    else content.textContent = text;
+    wrapper.appendChild(content);
+    if (role === "assistant") {
+      const actions = document.createElement("div");
+      actions.className = "message-actions";
+      const copy = document.createElement("button");
+      copy.type = "button";
+      copy.className = "message-action";
+      copy.textContent = "⧉";
+      copy.title = "Copiar";
+      copy.addEventListener("click", async () => {
+        await navigator.clipboard.writeText(text);
+        toast("Mensagem copiada.", "success");
+      });
+      actions.appendChild(copy);
+      wrapper.appendChild(actions);
     }
-);
+    messages.appendChild(wrapper);
+    scrollToBottom();
+    return content;
+  }
 
+  function scrollToBottom() {
+    requestAnimationFrame(() => { chat.scrollTop = chat.scrollHeight; });
+  }
 
-currentWorldPanel?.addEventListener(
-    "click",
-    event => {
+  async function loadWorlds() {
+    const data = await api("/api/worlds");
+    state.worlds = Array.isArray(data.mundos) ? data.mundos : [];
+    state.worlds.forEach(world => {
+      world.id = normalizeId(world.id);
+      world.chats = Array.isArray(world.chats) ? world.chats : [];
+      world.chats.forEach(item => item.id = normalizeId(item.id));
+    });
+    renderTree();
+    renderWorldCards();
+    updateHeader();
+  }
 
-        if (
-            event.target ===
-            currentWorldPanel
-        ) {
+  async function selectWorld(id) {
+    id = normalizeId(id);
+    const world = worldById(id);
+    if (!world) return toast("Mundo não encontrado.", "error");
+    state.worldId = id;
+    const availableChat = chatById(world, state.chatId);
+    if (!availableChat) state.chatId = world.chats[0]?.id || null;
+    saveSelection();
+    updateHeader();
+    hideModal(worldPanel);
+    closeSidebar();
+    if (state.chatId) await loadChat(id, state.chatId);
+    else showEmptyChat();
+  }
 
-            currentWorldPanel.classList.remove(
-                "open"
-            );
-
-        }
-
+  async function selectChat(worldId, chatId) {
+    worldId = normalizeId(worldId);
+    chatId = normalizeId(chatId);
+    if (!worldById(worldId) || !chatById(worldById(worldId), chatId)) {
+      await loadWorlds();
     }
-);
+    if (!worldById(worldId) || !chatById(worldById(worldId), chatId)) return toast("Chat não encontrado.", "error");
+    state.worldId = worldId;
+    state.chatId = chatId;
+    saveSelection();
+    updateHeader();
+    closeSidebar();
+    await loadChat(worldId, chatId);
+  }
 
-
-memoryPanel?.addEventListener(
-    "click",
-    event => {
-
-        if (
-            event.target ===
-            memoryPanel
-        ) {
-
-            memoryPanel.classList.remove(
-                "open"
-            );
-
-        }
-
+  async function loadChat(worldId, chatId) {
+    setLoading(true);
+    try {
+      const data = await api(`/api/worlds/${encodeURIComponent(worldId)}/chats/${encodeURIComponent(chatId)}`);
+      clearMessages();
+      const history = Array.isArray(data.mensagens) ? data.mensagens : [];
+      if (!history.length) {
+        showEmptyChat(false);
+        return;
+      }
+      history.forEach(item => {
+        if (item.role === "user" || item.role === "assistant") addMessage(item.role, item.content || "");
+      });
+      scrollToBottom();
+    } catch (error) {
+      toast(`Não foi possível carregar o chat: ${error.message}`, "error");
+      showEmptyChat();
+    } finally {
+      setLoading(false);
     }
-);
+  }
 
+  function showEmptyChat(showWelcome = true) {
+    clearMessages();
+    if (!showWelcome) return;
+    const node = document.createElement("div");
+    node.className = "welcome";
+    node.innerHTML = `<div class="welcome-icon">✦</div><h1>${escapeHtml(currentChatName.textContent || "RPG Simulator")}</h1><p>Envie sua primeira ação para iniciar a simulação.</p>`;
+    messages.appendChild(node);
+  }
 
-// ==================================================
-// INICIALIZAÇÃO
-// ==================================================
+  async function createChat() {
+    if (!state.worldId) {
+      showModal(worldPanel);
+      return;
+    }
+    try {
+      const data = await api(`/api/worlds/${encodeURIComponent(state.worldId)}/chats`, {
+        method: "POST",
+        body: JSON.stringify({ nome: "Nova conversa" })
+      });
+      state.chatId = normalizeId(data.id);
+      saveSelection();
+      await loadWorlds();
+      await loadChat(state.worldId, state.chatId);
+      input.focus();
+    } catch (error) {
+      toast(`Não foi possível criar o chat: ${error.message}`, "error");
+    }
+  }
 
-async function inicializar() {
+  async function createWorld() {
+    try {
+      setLoading(true);
+      const data = await api("/api/worlds", { method: "POST", body: JSON.stringify({}) });
+      if (!data.id) throw new Error("O servidor não retornou o ID do mundo.");
+      state.worldId = normalizeId(data.id);
+      state.chatId = "001";
+      saveSelection();
+      await loadWorlds();
+      await selectWorld(state.worldId);
+      toast(`Mundo ${state.worldId} criado.`, "success");
+    } catch (error) {
+      toast(`Não foi possível criar o mundo: ${error.message}`, "error");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function updateSendButton() {
+    sendButton.disabled = state.generating || !input.value.trim() || !state.worldId;
+  }
+
+  function resizeInput() {
+    input.style.height = "auto";
+    input.style.height = `${Math.min(input.scrollHeight, 190)}px`;
+  }
+
+  async function sendMessage() {
+    const text = input.value.trim();
+    if (!text || state.generating) return;
+    if (!state.worldId) {
+      showModal(worldPanel);
+      toast("Selecione um mundo primeiro.", "error");
+      return;
+    }
+    if (!state.chatId) {
+      await createChat();
+      if (!state.chatId) return;
+    }
+
+    state.generating = true;
+    state.controller = new AbortController();
+    updateSendButton();
+    input.value = "";
+    resizeInput();
+    addMessage("user", text);
+    const assistantContent = addMessage("assistant", "");
+    assistantContent.dataset.streaming = "true";
 
     try {
-
-        ajustarAltura();
-
-        atualizarBotaoGeracao();
-
-        await carregarMundos();
-
-        input.focus();
-
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ world_id: state.worldId, chat_id: state.chatId, message: text }),
+        signal: state.controller.signal
+      });
+      if (!response.ok) {
+        const body = await response.text();
+        let errorText = body;
+        try { errorText = JSON.parse(body).error || body; } catch (_) {}
+        throw new Error(errorText || `Erro HTTP ${response.status}`);
+      }
+      if (!response.body) throw new Error("O servidor não forneceu um stream.");
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder("utf-8");
+      let answer = "";
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        answer += decoder.decode(value, { stream: true });
+        if (answer.includes("[[STREAM_ERROR]]")) {
+          const index = answer.indexOf("[[STREAM_ERROR]]");
+          throw new Error(answer.slice(index + "[[STREAM_ERROR]]".length).trim() || "Erro no stream.");
+        }
+        assistantContent.innerHTML = markdown(answer);
+        scrollToBottom();
+      }
+      answer += decoder.decode();
+      if (answer.includes("[[STREAM_ERROR]]")) {
+        const index = answer.indexOf("[[STREAM_ERROR]]");
+        throw new Error(answer.slice(index + "[[STREAM_ERROR]]".length).trim() || "Erro no stream.");
+      }
+      if (!answer.trim()) assistantContent.textContent = "(A IA não retornou conteúdo.)";
+      await loadWorldsSilently();
     } catch (error) {
-
-        console.error(
-            "Erro na inicialização:",
-            error
-        );
-
+      if (error.name === "AbortError") {
+        assistantContent.textContent = "Geração interrompida.";
+      } else {
+        assistantContent.innerHTML = `<span class="message-error">Erro: ${escapeHtml(error.message)}</span>`;
+        toast(`Falha ao gerar resposta: ${error.message}`, "error");
+      }
+    } finally {
+      state.generating = false;
+      state.controller = null;
+      updateSendButton();
+      input.focus();
     }
+  }
 
-}
+  async function loadWorldsSilently() {
+    try {
+      const selectedWorld = state.worldId;
+      const selectedChat = state.chatId;
+      const data = await api("/api/worlds");
+      state.worlds = Array.isArray(data.mundos) ? data.mundos : [];
+      state.worlds.forEach(world => {
+        world.id = normalizeId(world.id);
+        world.chats = Array.isArray(world.chats) ? world.chats : [];
+        world.chats.forEach(item => item.id = normalizeId(item.id));
+      });
+      state.worldId = selectedWorld;
+      state.chatId = selectedChat;
+      updateHeader();
+    } catch (_) {}
+  }
 
+  function showCurrentWorld() {
+    const world = worldById(state.worldId);
+    if (!world) return toast("Nenhum mundo selecionado.", "error");
+    const category = worldCategory(world) === "fantasia" ? "Mundo Fantasia" : "Mundo Real";
+    currentWorldPanelTitle.textContent = world.nome || `Mundo ${world.id}`;
+    currentWorldPanelType.textContent = `${category} · ID ${world.id}`;
+    const chats = Array.isArray(world.chats) ? world.chats.length : 0;
+    currentWorldInfo.innerHTML = `<div class="world-info-grid"><div class="info-card"><div class="info-label">ID</div><div class="info-value">${escapeHtml(world.id)}</div></div><div class="info-card"><div class="info-label">Categoria</div><div class="info-value">${escapeHtml(category)}</div></div><div class="info-card"><div class="info-label">Chats</div><div class="info-value">${chats}</div></div><div class="info-card"><div class="info-label">Chat atual</div><div class="info-value">${escapeHtml(state.chatId || "Nenhum")}</div></div></div>`;
+    showModal(currentWorldPanel);
+  }
 
-inicializar();
+  function toggleCategoryHeaders() {
+    document.querySelectorAll(".world-category-header").forEach(header => {
+      header.addEventListener("click", () => {
+        const category = header.closest(".world-category");
+        category.classList.toggle("collapsed");
+      });
+    });
+  }
+
+  function handleKeydown(event) {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      sendMessage();
+    }
+  }
+
+  function bindEvents() {
+    form.addEventListener("submit", event => { event.preventDefault(); sendMessage(); });
+    input.addEventListener("input", () => { resizeInput(); updateSendButton(); });
+    input.addEventListener("keydown", handleKeydown);
+    sidebarToggle?.addEventListener("click", openSidebar);
+    sidebarOverlay?.addEventListener("click", closeSidebar);
+    newChatButton.addEventListener("click", createChat);
+    worldsButton.addEventListener("click", () => { renderWorldCards(); showModal(worldPanel); });
+    currentWorldButton.addEventListener("click", showCurrentWorld);
+    closeWorldPanel.addEventListener("click", () => hideModal(worldPanel));
+    closeCurrentWorldPanel.addEventListener("click", () => hideModal(currentWorldPanel));
+    memoryButton.addEventListener("click", () => showModal(memoryPanel));
+    closeMemoryPanel.addEventListener("click", () => hideModal(memoryPanel));
+    createWorldButton.addEventListener("click", createWorld);
+    treeRefresh.addEventListener("click", async () => {
+      try { await loadWorlds(); toast("Mundos atualizados.", "success"); } catch (error) { toast(error.message, "error"); }
+    });
+    document.querySelectorAll(".modal-backdrop").forEach(backdrop => {
+      backdrop.addEventListener("click", () => hideModal($(backdrop.dataset.close)));
+    });
+    document.querySelectorAll(".world-category-header").forEach(header => {
+      header.addEventListener("click", () => header.closest(".world-category").classList.toggle("collapsed"));
+    });
+    modelSelector.addEventListener("click", () => {
+      if (state.worldId) showCurrentWorld();
+      else showModal(worldPanel);
+    });
+    $("share-button")?.addEventListener("click", async () => {
+      const url = location.href;
+      try { await navigator.clipboard.writeText(url); toast("Link copiado.", "success"); }
+      catch (_) { toast("Não foi possível copiar o link.", "error"); }
+    });
+    $("attach-button")?.addEventListener("click", () => toast("Anexos ainda não estão habilitados.", ""));
+    $("tools-button")?.addEventListener("click", () => toast("Ferramentas do simulador são executadas pelo backend/Guardian.", ""));
+    document.addEventListener("keydown", event => {
+      if (event.key === "Escape") {
+        hideModal(worldPanel); hideModal(currentWorldPanel); hideModal(memoryPanel); closeSidebar();
+        if (state.generating) state.controller?.abort();
+      }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault(); worldsButton.click();
+      }
+    });
+  }
+
+  async function init() {
+    bindEvents();
+    resizeInput();
+    updateSendButton();
+    setLoading(true);
+    try {
+      await loadWorlds();
+      let world = worldById(state.worldId);
+      if (!world) world = state.worlds[0] || null;
+      if (world) {
+        state.worldId = normalizeId(world.id);
+        const chatData = chatById(world, state.chatId) || world.chats[0];
+        state.chatId = chatData ? normalizeId(chatData.id) : null;
+        saveSelection();
+        updateHeader();
+        if (state.chatId) await loadChat(state.worldId, state.chatId);
+        else showEmptyChat();
+      } else {
+        showModal(worldPanel);
+        showEmptyChat();
+      }
+    } catch (error) {
+      console.error(error);
+      toast(`Não foi possível conectar ao backend: ${error.message}`, "error");
+      showEmptyChat();
+    } finally {
+      setLoading(false);
+      input.focus();
+    }
+  }
+
+  window.RPGSimulator = {
+    reloadWorlds: loadWorlds,
+    selectWorld,
+    selectChat,
+    createChat,
+    createWorld,
+    state
+  };
+
+  init();
+})();
