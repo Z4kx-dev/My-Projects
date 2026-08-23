@@ -1,0 +1,14 @@
+{
+  "nome": "",
+  "idade": null,
+  "sexo": "",
+  "raca": "",
+  "localizacao": "",
+  "data": "",
+  "hora": "",
+  "vida": {},
+  "mana": {},
+  "nivel": 0,
+  "xp": 0,
+  "condicoes": []
+}
