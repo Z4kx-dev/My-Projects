@@ -2,61 +2,124 @@
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#212121">
   <meta name="color-scheme" content="dark">
   <title>RPG Simulator</title>
-  <link rel="stylesheet" href="/static/style.css?v=20260823-3">
+  <link rel="stylesheet" href="/static/style.css?v=20260823-4">
 </head>
 <body>
-<div id="app" class="app">
-  <aside id="sidebar" class="sidebar">
-    <div class="sidebar-inner">
-      <div class="brand-row">
-        <button id="brand-button" class="brand-button" type="button" aria-label="Menu">RPG Simulator</button>
-        <button id="sidebar-close" class="icon-btn mobile-only" type="button" aria-label="Fechar">×</button>
+  <div id="app" class="app">
+    <aside id="sidebar" class="sidebar" aria-label="Barra lateral">
+      <div class="sidebar-top">
+        <div class="sidebar-brand">
+          <button id="brand-button" class="brand-button" type="button" aria-label="Abrir menu">
+            <span class="brand-mark">✦</span><span>RPG Simulator</span>
+          </button>
+          <button id="sidebar-close" class="icon-button mobile-only" type="button" aria-label="Fechar barra lateral">×</button>
+        </div>
+        <button id="new-chat" class="new-chat" type="button">
+          <span class="new-chat-icon">＋</span><span>New chat</span><kbd>Ctrl K</kbd>
+        </button>
+        <div class="sidebar-search">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"></circle><path d="m16 16 4 4"></path></svg>
+          <input id="chat-search" type="search" placeholder="Search chats" autocomplete="off">
+          <kbd>⌘ K</kbd>
+        </div>
       </div>
-      <button id="new-chat" class="new-chat" type="button"><span class="plus">＋</span><span>Novo chat</span><kbd>Ctrl K</kbd></button>
-      <div class="sidebar-search"><span>⌕</span><input id="chat-search" placeholder="Pesquisar chats" autocomplete="off"></div>
-      <div class="tree-title"><span>Chats</span><button id="tree-refresh" class="icon-btn" type="button" title="Atualizar">↻</button></div>
-      <nav id="chat-tree" class="chat-tree" aria-label="Mundos e chats"></nav>
-      <div class="sidebar-fill"></div>
+
+      <div class="chat-history">
+        <div class="history-label"><span>Chats</span><button id="tree-refresh" class="tiny-button" type="button" aria-label="Atualizar">↻</button></div>
+        <nav id="chat-tree" class="chat-tree" aria-label="Histórico de chats"></nav>
+      </div>
+
       <div class="sidebar-bottom">
-        <button id="memory-button" class="side-link" type="button"><span>◫</span>Memória</button>
-        <button id="settings-button" class="side-link" type="button"><span>⚙</span>Configurações</button>
-        <button id="profile-button" class="profile" type="button"><span class="avatar">R</span><span>RPG Simulator</span><span class="dots">•••</span></button>
+        <button id="memory-button" class="sidebar-link" type="button">
+          <span class="link-icon">◫</span><span>Memória</span>
+        </button>
+        <button id="settings-button" class="sidebar-link" type="button">
+          <span class="link-icon">⚙</span><span>Configurações</span>
+        </button>
+        <button id="profile-button" class="profile-button" type="button">
+          <span class="profile-avatar">R</span>
+          <span class="profile-name">RPG Simulator</span>
+          <span class="profile-more">•••</span>
+        </button>
       </div>
-    </div>
-  </aside>
-  <div id="sidebar-overlay" class="overlay" hidden></div>
-  <main class="main">
-    <header class="topbar">
-      <div class="top-left">
-        <button id="sidebar-toggle" class="icon-btn mobile-only" type="button">☰</button>
-        <button id="model-selector" class="title-button" type="button"><span id="current-chat-name">RPG Simulator</span><span class="chevron">⌄</span></button>
+    </aside>
+
+    <div id="sidebar-overlay" class="sidebar-overlay" hidden></div>
+
+    <main class="main">
+      <header class="topbar">
+        <div class="topbar-left">
+          <button id="sidebar-toggle" class="icon-button mobile-only" type="button" aria-label="Abrir barra lateral">☰</button>
+          <button id="model-selector" class="model-selector" type="button" aria-haspopup="menu">
+            <span id="current-chat-name">RPG Simulator</span><span class="model-chevron">⌄</span>
+          </button>
+        </div>
+        <div class="topbar-right">
+          <button id="share-button" class="share-button" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4"></path><path d="m7 9 5-5 5 5"></path><path d="M5 13v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5"></path></svg>
+            <span>Share</span>
+          </button>
+        </div>
+      </header>
+
+      <section id="chat" class="chat" aria-label="Conversa">
+        <div id="messages" class="messages">
+          <div id="welcome" class="welcome">
+            <div class="welcome-mark">✦</div>
+            <h1>O que vamos simular?</h1>
+            <p>Selecione um mundo e comece uma nova conversa.</p>
+          </div>
+        </div>
+      </section>
+
+      <div class="composer-area">
+        <form id="chat-form" class="composer" autocomplete="off">
+          <textarea id="message" rows="1" maxlength="30000" placeholder="Mensagem para o RPG Simulator" aria-label="Mensagem"></textarea>
+          <div class="composer-toolbar">
+            <button id="attach-button" class="tool-button" type="button" aria-label="Adicionar arquivo">＋</button>
+            <div class="composer-tools">
+              <button id="tools-button" class="tool-text-button" type="button" aria-label="Ferramentas">Ferramentas⌄</button>
+            </div>
+            <span class="composer-spacer"></span>
+            <span class="enter-hint">Enter para enviar</span>
+            <button id="send-button" class="send-button" type="submit" disabled aria-label="Enviar mensagem">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5"></path><path d="m6 11 6-6 6 6"></path></svg>
+            </button>
+          </div>
+        </form>
+        <div class="composer-disclaimer">O RPG Simulator pode cometer erros. Verifique informações importantes.</div>
       </div>
-      <div class="top-right"><button id="share-button" class="icon-btn" type="button" title="Compartilhar">↗</button></div>
-    </header>
-    <section id="chat" class="chat">
-      <div id="messages" class="messages">
-        <div id="welcome" class="welcome"><div class="welcome-logo">✦</div><h1>O que vamos simular?</h1><p>Selecione um mundo e comece uma nova conversa.</p></div>
+    </main>
+  </div>
+
+  <div id="world-panel" class="modal-layer" hidden>
+    <div class="backdrop" data-close="world-panel"></div>
+    <section class="modal" role="dialog" aria-modal="true" aria-labelledby="world-title">
+      <header class="modal-header"><div><h2 id="world-title">Mundos</h2><p>Escolha o universo da simulação.</p></div><button id="close-world-panel" class="icon-button" type="button">×</button></header>
+      <div class="modal-body">
+        <div class="world-group"><button class="group-head" type="button"><span>🌎</span><b>Mundo Real</b><span>⌄</span></button><div id="real-worlds" class="world-list"></div></div>
+        <div class="world-group"><button class="group-head" type="button"><span>✨</span><b>Mundo Fantasia</b><span>⌄</span></button><div id="fantasia-worlds" class="world-list"></div></div>
+        <button id="create-world-button" class="create-world" type="button">＋ Criar mundo</button>
       </div>
     </section>
-    <div class="composer-wrap">
-      <form id="chat-form" class="composer" autocomplete="off">
-        <textarea id="message" rows="1" maxlength="30000" placeholder="Mensagem para o RPG Simulator"></textarea>
-        <div class="composer-row"><button id="attach-button" class="round-tool" type="button" aria-label="Adicionar">＋</button><div class="composer-spacer"></div><span class="hint">Enter para enviar</span><button id="send-button" class="send" type="submit" disabled aria-label="Enviar">↑</button></div>
-      </form>
-      <div class="disclaimer">O RPG Simulator pode cometer erros. Verifique informações importantes.</div>
-    </div>
-  </main>
-</div>
+  </div>
 
-<div id="world-panel" class="modal-layer" hidden><div class="backdrop" data-close="world-panel"></div><section class="modal" role="dialog" aria-modal="true"><header class="modal-head"><div><h2>Mundos</h2><p>Escolha o universo da simulação.</p></div><button id="close-world-panel" class="icon-btn" type="button">×</button></header><div class="modal-body"><div class="world-group"><button class="group-head" type="button"><span>🌎</span><b>Mundo Real</b><span>⌄</span></button><div id="real-worlds" class="world-list"></div></div><div class="world-group"><button class="group-head" type="button"><span>✨</span><b>Mundo Fantasia</b><span>⌄</span></button><div id="fantasia-worlds" class="world-list"></div></div><button id="create-world-button" class="create-world" type="button">＋ Criar mundo</button></div></section></div>
-<div id="memory-panel" class="modal-layer" hidden><div class="backdrop" data-close="memory-panel"></div><section class="modal" role="dialog" aria-modal="true"><header class="modal-head"><div><h2>Memória</h2><p>Estado persistente do mundo.</p></div><button id="close-memory-panel" class="icon-btn" type="button">×</button></header><div id="memory-tree" class="modal-body"><div class="empty-box">A memória é administrada pelo backend e pela Carmilla.</div></div></section></div>
-<div id="settings-panel" class="modal-layer" hidden><div class="backdrop" data-close="settings-panel"></div><section class="modal" role="dialog" aria-modal="true"><header class="modal-head"><div><h2>Configurações</h2><p>Preferências da interface.</p></div><button id="close-settings-panel" class="icon-btn" type="button">×</button></header><div class="modal-body settings"><label><span>Enter envia mensagem</span><input id="enter-send" type="checkbox" checked></label><label><span>Som de conclusão</span><input id="sound-toggle" type="checkbox"></label><button id="clear-local" class="danger-btn" type="button">Limpar seleção local</button></div></section></div>
-<div id="toast-container" class="toast-container" aria-live="polite"></div>
-<div id="loading" class="loading" hidden><div class="spinner"></div><span>Carregando…</span></div>
-<script src="/static/app.js?v=20260823-3" defer></script>
+  <div id="memory-panel" class="modal-layer" hidden>
+    <div class="backdrop" data-close="memory-panel"></div>
+    <section class="modal" role="dialog" aria-modal="true"><header class="modal-header"><div><h2>Memória</h2><p>Estado persistente do mundo.</p></div><button id="close-memory-panel" class="icon-button" type="button">×</button></header><div id="memory-tree" class="modal-body"><div class="empty-box">A memória é administrada pelo backend e pela Carmilla.</div></div></section>
+  </div>
+
+  <div id="settings-panel" class="modal-layer" hidden>
+    <div class="backdrop" data-close="settings-panel"></div>
+    <section class="modal" role="dialog" aria-modal="true"><header class="modal-header"><div><h2>Configurações</h2><p>Preferências da interface.</p></div><button id="close-settings-panel" class="icon-button" type="button">×</button></header><div class="modal-body settings"><label><span>Enter envia mensagem</span><input id="enter-send" type="checkbox" checked></label><label><span>Som de conclusão</span><input id="sound-toggle" type="checkbox"></label><button id="clear-local" class="danger-button" type="button">Limpar seleção local</button></div></section>
+  </div>
+
+  <div id="toast-container" class="toast-container" aria-live="polite"></div>
+  <div id="loading" class="loading" hidden><div class="spinner"></div><span>Carregando…</span></div>
+  <script src="/static/app.js?v=20260823-4" defer></script>
 </body>
 </html>
