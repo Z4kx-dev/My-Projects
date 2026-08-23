@@ -1,0 +1,98 @@
+[
+  {
+    "role": "user",
+    "content": "oi"
+  },
+  {
+    "role": "assistant",
+    "content": "Oi! Tudo bem? Como posso te ajudar hoje?"
+  },
+  {
+    "role": "user",
+    "content": "meu nome é raphael"
+  },
+  {
+    "role": "assistant",
+    "content": "Muito prazer, Raphael! Como posso te ajudar hoje?"
+  },
+  {
+    "role": "user",
+    "content": "qual meu nome?"
+  },
+  {
+    "role": "assistant",
+    "content": "Seu nome é Raphael!"
+  },
+  {
+    "role": "user",
+    "content": "qual meu nome? quantas mensagens EU ja te mandei?"
+  },
+  {
+    "role": "assistant",
+    "content": "Seu nome é **Raphael**!\n\nE, contando com essa última, você já me mandou **4 mensagens**:\n\n1. \"oi\"\n2. \"meu nome é raphael\"\n3. \"qual meu nome?\"\n4. \"qual meu nome? quantas mensagens EU ja te mandei?\""
+  },
+  {
+    "role": "user",
+    "content": "qual meu nome?"
+  },
+  {
+    "role": "assistant",
+    "content": "Seu nome continua sendo **Raphael**! 😄\n\nPosso te ajudar com algo mais?"
+  },
+  {
+    "role": "user",
+    "content": "oie"
+  },
+  {
+    "role": "assistant",
+    "content": "Oie, Raphael! 😄 \n\nTudo bem por aí? Em que posso te ajudar agora?"
+  },
+  {
+    "role": "user",
+    "content": "teste as formatações, todas"
+  },
+  {
+    "role": "assistant",
+    "content": "Com certeza! Aqui está uma demonstração completa com os principais recursos de formatação em **Markdown** e **HTML** suportados:\n\n---\n\n# Título Principal (H1)\n## Subtítulo (H2)\n### Título Nível 3 (H3)\n#### Título Nível 4 (H4)\n##### Título Nível 5 (H5)\n###### Título Nível 6 (H6)\n\n---\n\n### 1. Formatação de Texto\n\n* **Texto em Negrito**: `**Texto**` ou `__Texto__`\n* *Texto em Itálico*: `*Texto*` ou `_Texto_`\n* ***Negrito e Itálico***: `***Texto***`\n* ~~Texto Tachado (Riscado)~~: `~~Texto~~`\n* <u>Texto Sublinhado</u>: `<u>Texto</u>`\n* <mark>Texto Destacado (Marca-texto)</mark>: `<mark>Texto</mark>`\n* Texto <sub>Subscrito</sub> (ex: H<sub>2</sub>O): `<sub>2</sub>`\n* Texto <sup>Sobrescrito</sup> (ex: X<sup>2</sup>): `<sup>2</sup>`\n\n---\n\n### 2. Listas\n\n#### Lista Não Ordenada\n* Item nível 1\n  * Subitem nível 2\n    * Subitem nível 3\n* Outro item nível 1\n\n#### Lista Ordenada\n1. Primeiro passo\n2. Segundo passo\n   1. Subpasso A\n   2. Subpasso B\n3. Terceiro passo\n\n#### Lista de Tarefas (Checklist)\n- [x] Tarefa concluída\n- [ ] Tarefa pendente\n- [ ] Outra tarefa pendente\n\n---\n\n### 3. Citações (Blockquotes)\n\n> Esta é uma citação simples.\n> \n> > Esta é uma citação aninhada (dentro de outra citação).\n\n---\n\n### 4. Código e Sintaxe\n\n#### Código Inline\nPara exibir uma variável em Python, use a função `print()`.\n\n#### Bloco de Código (Python)\n```python\ndef saudar(nome):\n    \"\"\"Função para saudar o usuário\"\"\"\n    mensagem = f\"Olá, {nome}!\"\n    print(mensagem)\n    return mensagem\n\nsaudar(\"Raphael\")\n```\n\n#### Bloco de Código (JavaScript)\n```javascript\nconst usuario = {\n  nome: \"Raphael\",\n  status: \"Ativo\"\n};\n\nconsole.log(`Usuário: ${usuario.nome}`);\n```\n\n#### Bloco de Código (JSON)\n```json\n{\n  \"nome\": \"Raphael\",\n  \"idade\": 25,\n  \"habilidades\": [\"Markdown\", \"Python\", \"Prompt Engineering\"]\n}\n```\n\n---\n\n### 5. Tabelas\n\n| Nome | Função | Status | Pontuação |\n| :--- | :---: | :---: | ---: |\n| **Raphael** | Usuário | <mark>Ativo</mark> | 1.000 |\n| **Assistente** | IA | Online | 9.999 |\n| **Bot** | Teste | Offline | 0 |\n\n*(Alinhamento: Esquerda | Centro | Centro | Direita)*\n\n---\n\n### 6. Fórmulas Matemáticas (LaTeX)\n\n* **Inline**: A famosa equação de Einstein é $E = mc^2$.\n* **Bloco**:\n$$f(x) = \\int_{-\\infty}^{\\infty} e^{-x^2} dx = \\sqrt{\\pi}$$\n\n---\n\n### 7. Links e Âncoras\n\n* [Clique aqui para ir para o Google](https://www.google.com)\n* Link em formato de texto bruto: <https://www.wikipedia.org>\n\n---\n\n### 8. Elementos Interativos / Escondidos (HTML)\n\n<details>\n<summary><b>Clique aqui para expandir/esconder o conteúdo! 👈</b></summary>\n\n🎉 **Surpresa!** Você encontrou o conteúdo escondido dentro da tag `<details>`.\n</details>\n\n---\n\n### 9. Linha Divisória\n\nTrês traços (`---`), asteriscos (`***`) ou underlines (`___`) criam uma linha horizontal:\n\n---\n\nSe precisar de algum exemplo específico ou combinação diferente, só avisar! 😄"
+  },
+  {
+    "role": "user",
+    "content": "faça um textinho pequeno se apresentando"
+  },
+  {
+    "role": "assistant",
+    "content": "Olá, Raphael! 👋\n\nEu sou seu assistente de inteligência artificial. Estou aqui para ser o seu parceiro do dia a dia: posso tirar dúvidas, escrever e revisar textos, ajudar com códigos, organizar ideias ou simplesmente conversar! \n\nMeu objetivo é tornar sua rotina mais simples, rápida e prática. Conte comigo para o que precisar! 🚀"
+  },
+  {
+    "role": "user",
+    "content": "mnd o mesmo txt"
+  },
+  {
+    "role": "assistant",
+    "content": "Olá, Raphael! 👋\n\nEu sou seu assistente de inteligência artificial. Estou aqui para ser o seu parceiro do dia a dia: posso tirar dúvidas, escrever e revisar textos, ajudar com códigos, organizar ideias ou simplesmente conversar! \n\nMeu objetivo é tornar sua rotina mais simples, rápida e prática. Conte comigo para o que precisar! 🚀"
+  },
+  {
+    "role": "user",
+    "content": "mnd o msm texto"
+  },
+  {
+    "role": "assistant",
+    "content": "Olá, Raphael! 👋\n\nEu sou seu assistente de inteligência artificial. Estou aqui para ser o seu parceiro do dia a dia: posso tirar dúvidas, escrever e revisar textos, ajudar com códigos, organizar ideias ou simplesmente conversar! \n\nMeu objetivo é tornar sua rotina mais simples, rápida e prática. Conte comigo para o que precisar! 🚀"
+  },
+  {
+    "role": "user",
+    "content": "manda"
+  },
+  {
+    "role": "assistant",
+    "content": "Olá, Raphael! 👋\n\nEu sou seu assistente de inteligência artificial. Estou aqui para ser o seu parceiro do dia a dia: posso tirar dúvidas, escrever e revisar textos, ajudar com códigos, organizar ideias ou simplesmente conversar! \n\nMeu objetivo é tornar sua rotina mais simples, rápida e prática. Conte comigo para o que precisar! 🚀"
+  },
+  {
+    "role": "user",
+    "content": "manda o msm texto"
+  },
+  {
+    "role": "assistant",
+    "content": "Olá, Raphael! 👋\n\nEu sou seu assistente de inteligência artificial. Estou aqui para ser o seu parceiro do dia a dia: posso tirar dúvidas, escrever e revisar textos, ajudar com códigos, organizar ideias ou simplesmente conversar! \n\nMeu objetivo é tornar sua rotina mais simples, rápida e prática. Conte comigo para o que precisar! 🚀"
+  }
+]

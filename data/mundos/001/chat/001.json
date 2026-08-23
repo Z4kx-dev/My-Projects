@@ -1,0 +1,24 @@
+{
+  "id": "001",
+  "world_id": "001",
+  "nome": "001",
+  "criado_em": "2026-08-23T03:27:47.305724+00:00",
+  "atualizado_em": "2026-08-23T03:29:43.871039+00:00",
+  "mensagens": [
+    {
+      "role": "user",
+      "content": "Oi, tudo bem?",
+      "timestamp": "2026-08-23T03:28:06.241895+00:00"
+    },
+    {
+      "role": "assistant",
+      "content": "A ação do jogador é apenas um \"Oi, tudo bem?\". Não há nenhuma ação específica para ser realizada, apenas uma mensagem de saudação.\n\nO mundo continua existindo independentemente do jogador. O tempo ainda não está passando.\n\nO jogador não está interagindo com o ambiente ou com outros NPCs. Portanto, não há consequências diretas para essa ação.\n\nNo entanto, é possível que os NPCs que estão em sua localização atual ou que passam por lá possam notar sua presença e reagir de acordo com sua personalidade e rotinas.\n\nVamos simular o resultado dessa ação:\n\nA localização atual do jogador é desconhecida, pois não há informação disponível sobre isso.\n\nOs NPCs que estão nas proximidades do jogador não parecem ter reagido a sua presença. O ambiente está calmo e tranquilo.\n\nAgora é a vez do jogador escolher o que fazer em seguida. Qual é a próxima ação do jogador?",
+      "timestamp": "2026-08-23T03:29:19.254782+00:00"
+    },
+    {
+      "role": "user",
+      "content": "- ja mam imie Raphael.\n- Moja matka imie jest Elzbieta",
+      "timestamp": "2026-08-23T03:29:43.871021+00:00"
+    }
+  ]
+}

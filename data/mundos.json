@@ -1,0 +1,42 @@
+{
+  "mundos": {
+    "001": {
+      "nome": "Mundo 001",
+      "chats": {
+        "002": {
+          "nome": "Nova conversa",
+          "mensagens": [
+            {
+              "role": "user",
+              "content": "teste 1 mundo 001"
+            },
+            {
+              "role": "assistant",
+              "content": "Olá! Teste recebido com sucesso. 🚀 \n\nO sistema está online e funcionando perfeitamente. Como posso te ajudar hoje?"
+            }
+          ]
+        }
+      }
+    },
+    "002": {
+      "nome": "Mundo 002",
+      "chats": {
+        "001": {
+          "nome": "Nova conversa",
+          "mensagens": []
+        }
+      }
+    },
+    "003": {
+      "nome": "Renata maluca",
+      "chats": {
+        "001": {
+          "nome": "Nova conversa"
+        },
+        "002": {
+          "nome": "Nova conversa"
+        }
+      }
+    }
+  }
+}
