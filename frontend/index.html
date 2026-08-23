@@ -1,28 +1,31 @@
 <!doctype html>
 <html lang="pt-BR">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#212121"><meta name="color-scheme" content="dark"><title>RPG Simulator</title><link rel="stylesheet" href="/static/style.css">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#212121">
+<meta name="color-scheme" content="dark">
+<title>RPG Simulator</title>
+<link rel="stylesheet" href="/static/style.css?v=20260823">
 </head>
 <body>
-<div id="app">
+<div id="app" class="app">
 <aside id="sidebar" class="sidebar">
-  <div class="sidebar-header"><button id="new-chat" class="new-chat" type="button"><span>＋</span><span>Novo chat</span></button></div>
-  <nav class="sidebar-nav">
-    <button id="worlds-button" class="sidebar-button" type="button"><span class="icon">⌕</span><span>Mundos</span></button>
-  </nav>
-  <section class="world-tree-section"><div class="tree-title-row"><span class="section-title">Mundos</span><button id="tree-refresh" class="small-action" type="button">↻</button></div><div id="chat-tree" class="chat-tree"></div></section>
+  <div class="sidebar-header"><button id="new-chat" class="new-chat" type="button"><span class="new-chat-plus">＋</span><span>Novo chat</span></button></div>
+  <nav class="sidebar-nav"><button id="worlds-button" class="sidebar-button" type="button"><span class="icon">⌕</span><span>Mundos</span></button></nav>
+  <section class="world-tree-section"><div class="tree-title-row"><span class="section-title">Seus mundos</span><button id="tree-refresh" class="small-action" type="button">↻</button></div><div id="chat-tree" class="chat-tree"></div></section>
   <div class="sidebar-spacer"></div>
   <div class="sidebar-footer"><button id="memory-button" class="sidebar-button" type="button"><span class="icon">▤</span><span>Memória</span></button><button id="settings-button" class="sidebar-button" type="button"><span class="icon">⚙</span><span>Configurações</span></button><button class="profile-button" type="button"><span class="avatar">R</span><span class="profile-name">RPG Simulator</span><span class="more">•••</span></button></div>
 </aside>
 <div id="sidebar-overlay" class="sidebar-overlay" hidden></div>
 <main class="main">
 <header class="topbar"><div class="topbar-left"><button id="sidebar-toggle" class="icon-button mobile-only" type="button">☰</button><button id="model-selector" class="model-selector" type="button"><span id="current-chat-name">RPG Simulator</span><span class="chevron">⌄</span></button></div><div class="topbar-actions"><button id="share-button" class="icon-button" type="button">↗</button></div></header>
-<section id="chat" class="chat"><div id="messages" class="messages"><div id="welcome" class="welcome"><div class="welcome-icon">✦</div><h1>RPG Simulator</h1><p>Selecione um mundo e comece a simulação.</p></div></div></section>
+<section id="chat" class="chat"><div id="messages" class="messages"><div id="welcome" class="welcome"><div class="welcome-icon">✦</div><h1>O que vamos simular?</h1><p>Selecione um mundo na barra lateral para começar.</p></div></div></section>
 <div class="composer-container"><form id="chat-form" class="composer" autocomplete="off"><textarea id="message" rows="1" maxlength="20000" placeholder="Mensagem para o RPG Simulator"></textarea><div class="composer-bottom"><div class="composer-tools"><button id="attach-button" class="tool-button" type="button">＋</button></div><div class="composer-right"><span class="input-hint">Enter para enviar · Shift+Enter para nova linha</span><button id="send-button" class="send-button" type="submit" disabled>↑</button></div></div></form><div class="disclaimer">O RPG Simulator pode cometer erros. Verifique informações importantes.</div></div>
 </main></div>
-<div id="world-panel" class="modal-layer" hidden><div class="modal-backdrop" data-close="world-panel"></div><section class="modal"><header class="modal-header"><div><h2>Mundos</h2><p>Selecione o universo da simulação.</p></div><button id="close-world-panel" class="icon-button" type="button">×</button></header><div class="modal-body world-panel-body"><section class="world-category" data-category="real"><button class="world-category-header" type="button"><span>🌎</span><strong>Mundo Real</strong><span>⌄</span></button><div id="real-worlds" class="world-category-list"></div></section><section class="world-category" data-category="fantasia"><button class="world-category-header" type="button"><span>✨</span><strong>Mundo Fantasia</strong><span>⌄</span></button><div id="fantasia-worlds" class="world-category-list"></div></section><button id="create-world-button" class="new-world-button" type="button">＋ Criar mundo</button></div></section></div>
+<div id="world-panel" class="modal-layer" hidden><div class="modal-backdrop" data-close="world-panel"></div><section class="modal"><header class="modal-header"><div><h2>Mundos</h2><p>Selecione o universo da simulação.</p></div><button id="close-world-panel" class="icon-button" type="button">×</button></header><div class="modal-body world-panel-body"><section class="world-category" data-category="real"><button class="world-category-header" type="button"><span>🌎</span><strong>Mundo Real</strong><span class="category-chevron">⌄</span></button><div id="real-worlds" class="world-category-list"></div></section><section class="world-category" data-category="fantasia"><button class="world-category-header" type="button"><span>✨</span><strong>Mundo Fantasia</strong><span class="category-chevron">⌄</span></button><div id="fantasia-worlds" class="world-category-list"></div></section><button id="create-world-button" class="new-world-button" type="button">＋ Criar mundo</button></div></section></div>
 <div id="current-world-panel" class="modal-layer" hidden><div class="modal-backdrop" data-close="current-world-panel"></div><section class="modal"><header class="modal-header"><div><h2 id="current-world-panel-title">Mundo</h2><p id="current-world-panel-type"></p></div><button id="close-current-world-panel" class="icon-button" type="button">×</button></header><div id="current-world-info" class="modal-body"></div></section></div>
 <div id="memory-panel" class="modal-layer" hidden><div class="modal-backdrop" data-close="memory-panel"></div><section class="modal"><header class="modal-header"><div><h2>Memória</h2><p>Estado persistente administrado pela Carmilla.</p></div><button id="close-memory-panel" class="icon-button" type="button">×</button></header><div id="memory-tree" class="modal-body"><div class="memory-note">A memória é mantida pelo backend.</div></div></section></div>
 <div id="toast-container" class="toast-container"></div><div id="loading" class="loading-overlay" hidden><div class="loading-spinner"></div><span>Carregando…</span></div>
-<script src="/static/app.js"></script>
+<script src="/static/app.js?v=20260823" defer></script>
 </body></html>
