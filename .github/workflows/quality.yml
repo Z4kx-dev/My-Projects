@@ -25,6 +25,7 @@ jobs:
         with:
           node-version: "20"
       - run: node --check frontend/app.js
+      - run: python -m pytest -q tests/test_frontend_contracts.py
   container:
     runs-on: ubuntu-latest
     steps:
