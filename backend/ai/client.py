@@ -16,18 +16,25 @@ class OllamaClient:
         self.url = (url or os.getenv("OLLAMA_URL", "http://127.0.0.1:11434")).rstrip("/")
         self.model = model or os.getenv("OLLAMA_MODEL", "llama3.1")
 
-    def chat(self, messages: list[dict[str, str]], stream: bool = False, options: dict[str, Any] | None = None) -> Iterator[str] | str:
-        payload = {"model": self.model, "messages": messages, "stream": stream}
+    def chat(
+        self,
+        messages: list[dict[str, Any]],
+        stream: bool = False,
+        options: dict[str, Any] | None = None,
+        tools: list[dict[str, Any]] | None = None,
+    ) -> Iterator[str] | str | dict[str, Any]:
+        payload: dict[str, Any] = {"model": self.model, "messages": messages, "stream": stream}
         if options:
             payload["options"] = options
+        if tools:
+            payload["tools"] = tools
         try:
             response = requests.post(f"{self.url}/api/chat", json=payload, stream=stream, timeout=900)
             response.raise_for_status()
         except requests.RequestException as exc:
             raise LLMError(f"Falha no provedor LLM: {exc}") from exc
         if not stream:
-            data = response.json()
-            return ((data.get("message") or {}).get("content") or "")
+            return response.json()
 
         def tokens() -> Iterator[str]:
             for line in response.iter_lines(decode_unicode=True):
@@ -40,4 +47,5 @@ class OllamaClient:
                 token = (data.get("message") or {}).get("content", "")
                 if token:
                     yield token
+
         return tokens()
