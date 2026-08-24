@@ -22,6 +22,7 @@ class MemoryStore:
         existing = self.get(world_id, memory.id)
         if existing:
             existing["importancia"] = max(existing.get("importancia", 0.0), importance)
+            existing["tags"] = sorted(set(existing.get("tags", [])) | set(tags or []))
             existing["atualizado_em"] = utc_now()
             self.store.write(existing, "mundos", world_id, "memoria", f"{memory.id}.json")
             return existing
@@ -31,6 +32,32 @@ class MemoryStore:
 
     def get(self, world_id: str, memory_id: str) -> dict[str, Any] | None:
         return self.store.read("mundos", world_id, "memoria", f"{memory_id}.json")
+
+    def update(self, world_id: str, memory_id: str, **changes: Any) -> dict[str, Any] | None:
+        item = self.get(world_id, memory_id)
+        if not item:
+            return None
+        if "conteudo" in changes:
+            content = str(changes["conteudo"]).strip()
+            if not content:
+                raise ValueError("Memória vazia")
+        else:
+            content = item.get("conteudo", "")
+        item["conteudo"] = content
+        if "tipo" in changes:
+            item["tipo"] = str(changes["tipo"])
+        if "importancia" in changes:
+            item["importancia"] = max(0.0, min(1.0, float(changes["importancia"])))
+        if "tags" in changes:
+            if not isinstance(changes["tags"], list):
+                raise ValueError("tags deve ser uma lista")
+            item["tags"] = [str(x) for x in changes["tags"]]
+        item["atualizado_em"] = utc_now()
+        self.store.write(item, "mundos", world_id, "memoria", f"{memory_id}.json")
+        return item
+
+    def delete(self, world_id: str, memory_id: str) -> bool:
+        return self.store.delete("mundos", world_id, "memoria", f"{memory_id}.json")
 
     def list(self, world_id: str) -> list[dict[str, Any]]:
         root = self.store.path("mundos", world_id, "memoria")
