@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from typing import Any
 from .store import MemoryStore
 from backend.core.repository import ChatRepository, WorldRepository
 
@@ -15,8 +14,9 @@ class ContextBuilder:
         world = self.worlds.get(world_id) or {}
         chat = self.chats.get(world_id, chat_id) or {}
         memories = self.memories.search(world_id, query, 16)
-        recent = chat.get("mensagens", [])[-30:]
-        sections: list[str] = ["[ESTADO DO MUNDO]\n" + json.dumps(world, ensure_ascii=False)]
+        messages = chat.get("mensagens", [])
+        recent = messages[-31:-1] if messages else []
+        sections = ["[ESTADO DO MUNDO]\n" + json.dumps(world, ensure_ascii=False)]
         if memories:
             sections.append("[MEMÓRIAS RELEVANTES]\n" + "\n".join(json.dumps(m, ensure_ascii=False) for m in memories))
         if recent:
