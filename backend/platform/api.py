@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict
 import os
 from pathlib import Path
+import tempfile
 import uuid
 
 from flask import Blueprint, jsonify, request
@@ -25,13 +26,7 @@ def install(app, worlds, memories, store):
 
     @bp.get("/status")
     def status():
-        return jsonify({
-            "ok": True,
-            "arquitetura": "motor-estado-llm-memoria-rag-tools",
-            "entidades": len(runtime.entities),
-            "notebooks": len(notebooks),
-            "guard": True,
-        })
+        return jsonify({"ok": True, "arquitetura": "motor-estado-llm-memoria-rag-tools", "entidades": len(runtime.entities), "notebooks": len(notebooks), "guard": True})
 
     @bp.get("/worlds/<world_id>/state")
     def state(world_id):
@@ -95,12 +90,7 @@ def install(app, worlds, memories, store):
         text = str(body.get("text") or "")
         if not text:
             return jsonify({"error": "text obrigatório"}), 400
-        document = notebook(world_id).add_text(
-            str(body.get("title") or "Fonte sem título"),
-            text,
-            str(body.get("mime_type") or "text/plain"),
-            {str(k): str(v) for k, v in (body.get("metadata") or {}).items()},
-        )
+        document = notebook(world_id).add_text(str(body.get("title") or "Fonte sem título"), text, str(body.get("mime_type") or "text/plain"), {str(k): str(v) for k, v in (body.get("metadata") or {}).items()})
         return jsonify({"source": asdict(document)}), 201
 
     @bp.post("/worlds/<world_id>/rag/upload")
@@ -109,18 +99,31 @@ def install(app, worlds, memories, store):
         if uploaded is None or not uploaded.filename:
             return jsonify({"error": "Envie um arquivo no campo file."}), 400
         suffix = Path(uploaded.filename).suffix.lower()
-        allowed = {".txt", ".md", ".markdown", ".html", ".htm", ".json", ".csv"}
+        allowed = {".txt", ".md", ".markdown", ".html", ".htm", ".json", ".csv", ".pdf", ".docx"}
         if suffix not in allowed:
-            return jsonify({"error": f"Formato não suportado nesta etapa: {suffix or '<sem extensão>'}."}), 415
+            return jsonify({"error": f"Formato não suportado: {suffix or '<sem extensão>'}."}), 415
         raw = uploaded.read()
         if len(raw) > 10 * 1024 * 1024:
             return jsonify({"error": "Arquivo excede o limite de 10 MB."}), 413
         try:
-            text = raw.decode("utf-8")
-            document = notebook(world_id).add_text(uploaded.filename, text, uploaded.mimetype or "text/plain", {"filename": uploaded.filename})
+            if suffix in {".pdf", ".docx"}:
+                with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+                    tmp.write(raw)
+                    temp_path = Path(tmp.name)
+                try:
+                    document = notebook(world_id).ingestor.from_file(temp_path, {"filename": uploaded.filename})
+                    notebook(world_id).documents[document.source_id] = document
+                    notebook(world_id).index.upsert(notebook(world_id).ingestor.chunk(document))
+                    notebook(world_id)._save_sources()
+                finally:
+                    temp_path.unlink(missing_ok=True)
+            else:
+                document = notebook(world_id).add_text(uploaded.filename, raw.decode("utf-8"), uploaded.mimetype or "text/plain", {"filename": uploaded.filename})
             return jsonify({"source": asdict(document)}), 201
         except UnicodeDecodeError:
-            return jsonify({"error": "Arquivo precisa estar em UTF-8."}), 415
+            return jsonify({"error": "Arquivo de texto precisa estar em UTF-8."}), 415
+        except (ValueError, OSError) as exc:
+            return jsonify({"error": str(exc)}), 422
 
     @bp.post("/worlds/<world_id>/validate")
     def validate(world_id):
