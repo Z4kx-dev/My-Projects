@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import asdict
-import json
 import os
 from pathlib import Path
 import uuid
@@ -10,7 +9,6 @@ from flask import Blueprint, jsonify, request
 
 from backend.platform.runtime import RPGRuntime, Entity, ValidationError
 from backend.rag.notebook import NotebookWorkspace
-from backend.platform.ai_guard import DecisionGuard
 
 
 def install(app, worlds, memories, store):
@@ -18,7 +16,6 @@ def install(app, worlds, memories, store):
     data_root = Path(os.getenv("RPG_DATA_DIR", "data"))
     runtime = RPGRuntime(str(data_root))
     notebooks: dict[str, NotebookWorkspace] = {}
-    guard = DecisionGuard()
 
     def notebook(world_id: str) -> NotebookWorkspace:
         wid = str(world_id).zfill(3)
