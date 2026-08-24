@@ -1,6 +1,6 @@
 from __future__ import annotations
 from dataclasses import asdict
-import os, tempfile, uuid, json
+import os, tempfile, uuid, json, re
 from pathlib import Path
 from flask import Blueprint, jsonify, request, Response
 from backend.platform.runtime import RPGRuntime, Entity, ValidationError
@@ -8,170 +8,139 @@ from backend.platform.backup import BackupManager
 from backend.rag.notebook import NotebookWorkspace
 from backend.engine.world_services import MapSystem, WorldManager
 
+_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 
 def install(app, worlds, memories, store):
     bp = Blueprint('platform', __name__, url_prefix='/api/v2')
     data_root = Path(os.getenv('RPG_DATA_DIR', str(Path(__file__).resolve().parents[2] / 'data'))).resolve()
-    runtime = RPGRuntime(str(data_root))
-    backups = BackupManager(str(data_root))
-    notebooks = {}
-    maps = MapSystem()
-    manager = WorldManager()
-
+    runtime = RPGRuntime(str(data_root)); backups = BackupManager(str(data_root)); notebooks = {}; maps = MapSystem(); manager = WorldManager()
+    def valid_id(value):
+        value = str(value)
+        if not _ID_RE.fullmatch(value): raise ValueError('Identificador inválido')
+        return value
     def notebook(wid):
-        wid = str(wid).zfill(3)
-        if wid not in notebooks:
-            notebooks[wid] = NotebookWorkspace(wid, data_root / 'notebooks' / wid)
+        wid = valid_id(str(wid).zfill(3))
+        if wid not in notebooks: notebooks[wid] = NotebookWorkspace(wid, data_root / 'notebooks' / wid)
         return notebooks[wid]
-
-    def world_or_404(wid):
-        return worlds.get(str(wid).zfill(3))
-
+    def world_or_404(wid): return worlds.get(str(wid).zfill(3))
     @bp.get('/status')
-    def status():
-        return jsonify({'ok': True, 'versao': '0.9.1', 'arquitetura': 'estado->simulacao->memoria->rag->llm', 'entidades': len(runtime.entities), 'notebooks': len(notebooks), 'guard': True, 'agente': True, 'autonomia': True, 'backup': True})
-
+    def status(): return jsonify({'ok': True, 'versao': '0.9.2', 'arquitetura': 'estado->simulacao->memoria->rag->llm', 'entidades': len(runtime.entities), 'notebooks': len(notebooks), 'guard': True, 'agente': True, 'autonomia': True, 'backup': True})
     @bp.get('/worlds/<world_id>/state')
     def state(world_id):
         wid = str(world_id).zfill(3); w = world_or_404(wid)
         if not w: return jsonify({'error': 'Mundo não encontrado'}), 404
-        runtime.sync_entities_from_world(w)
-        return jsonify({'world': manager.normalize(w), 'entities': [asdict(e) for e in runtime.entities.values() if e.world_id == wid]})
-
+        runtime.sync_entities_from_world(w); return jsonify({'world': manager.normalize(w), 'entities': [asdict(e) for e in runtime.entities.values() if e.world_id == wid]})
     @bp.post('/worlds/<world_id>/advance')
     def advance(world_id):
         w = world_or_404(world_id)
         if not w: return jsonify({'error': 'Mundo não encontrado'}), 404
         b = request.get_json(silent=True) or {}
         try:
-            r = runtime.simulate(w, float(b.get('hours', 1)))
-            errors = runtime.audit.validate(w)
+            r = runtime.simulate(w, float(b.get('hours', 1))); errors = runtime.audit.validate(w)
             if errors: return jsonify({'error': 'Estado inválido após simulação', 'erros': errors}), 409
             worlds.save(w); return jsonify(r)
         except (ValueError, ValidationError) as e: return jsonify({'error': str(e)}), 400
-
     @bp.post('/worlds/<world_id>/snapshot')
     def snapshot(world_id):
         wid = str(world_id).zfill(3); w = world_or_404(wid)
         if not w: return jsonify({'error': 'Mundo não encontrado'}), 404
-        manager.normalize(w); runtime.sync_entities_from_world(w); runtime.persist_entities_to_world(w); worlds.save(w)
-        b = request.get_json(silent=True) or {}
+        manager.normalize(w); runtime.sync_entities_from_world(w); runtime.persist_entities_to_world(w); worlds.save(w); b = request.get_json(silent=True) or {}
         return jsonify({'snapshot': runtime.snapshots.save(wid, w, str(b.get('label') or 'manual'))}), 201
-
     @bp.post('/worlds/<world_id>/backup')
     def backup(world_id):
         wid = str(world_id).zfill(3)
         if not world_or_404(wid): return jsonify({'error': 'Mundo não encontrado'}), 404
         return jsonify({'backup': backups.backup_world(wid)}), 201
-
     @bp.get('/worlds/<world_id>/backups')
     def list_backups(world_id): return jsonify({'backups': backups.list(str(world_id).zfill(3))})
-
     @bp.get('/worlds/<world_id>/export')
     def export_world(world_id):
         w = world_or_404(world_id)
         if not w: return jsonify({'error': 'Mundo não encontrado'}), 404
-        payload = json.dumps(manager.exportable(w), ensure_ascii=False, indent=2)
-        return Response(payload, mimetype='application/json', headers={'Content-Disposition': f'attachment; filename=mundo-{str(world_id).zfill(3)}.json'})
-
+        payload = json.dumps(manager.exportable(w), ensure_ascii=False, indent=2); return Response(payload, mimetype='application/json', headers={'Content-Disposition': f'attachment; filename=mundo-{str(world_id).zfill(3)}.json'})
     @bp.post('/worlds/<world_id>/entities')
     def entity(world_id):
         wid = str(world_id).zfill(3); w = world_or_404(wid)
         if not w: return jsonify({'error': 'Mundo não encontrado'}), 404
-        b = request.get_json(silent=True) or {}
-        item = Entity(str(b.get('id') or uuid.uuid4().hex[:12]), str(b.get('name') or 'Sem nome'), str(b.get('kind') or 'npc'), wid, b.get('attributes') or {}, b.get('needs') or {}, b.get('goals') or [], b.get('relations') or {}, b.get('memory_ids') or [])
+        b = request.get_json(silent=True) or {}; item = Entity(str(b.get('id') or uuid.uuid4().hex[:12]), str(b.get('name') or 'Sem nome'), str(b.get('kind') or 'npc'), wid, b.get('attributes') or {}, b.get('needs') or {}, b.get('goals') or [], b.get('relations') or {}, b.get('memory_ids') or [])
         try:
-            runtime.sync_entities_from_world(w); runtime.register_entity(item); runtime.persist_entities_to_world(w); errors = runtime.audit.validate(w)
+            valid_id(item.id); runtime.sync_entities_from_world(w); runtime.register_entity(item); runtime.persist_entities_to_world(w); errors = runtime.audit.validate(w)
             if errors: return jsonify({'error': 'Estado inválido', 'erros': errors}), 409
             worlds.save(w)
-        except ValidationError as e: return jsonify({'error': str(e)}), 400
+        except (ValidationError, ValueError) as e: return jsonify({'error': str(e)}), 400
         return jsonify({'entity': asdict(item)}), 201
-
     @bp.get('/worlds/<world_id>/autonomy')
     def autonomy(world_id):
         wid = str(world_id).zfill(3); w = world_or_404(wid)
         if not w: return jsonify({'error': 'Mundo não encontrado'}), 404
-        runtime.sync_entities_from_world(w)
-        return jsonify({'decisoes': runtime.autonomy.plan([asdict(e) for e in runtime.entities.values() if e.world_id == wid])})
-
+        runtime.sync_entities_from_world(w); return jsonify({'decisoes': runtime.autonomy.plan([asdict(e) for e in runtime.entities.values() if e.world_id == wid])})
     @bp.post('/worlds/<world_id>/production')
     def production(world_id):
         w = world_or_404(world_id)
         if not w: return jsonify({'error': 'Mundo não encontrado'}), 404
-        b = request.get_json(silent=True) or {}; stock = w.setdefault('economia', {}).setdefault('estoques', {})
-        r = runtime.production.produce(stock, b.get('recipe') or {}, int(b.get('workers', 1)), float(b.get('periods', 1)))
+        b = request.get_json(silent=True) or {}; stock = w.setdefault('economia', {}).setdefault('estoques', {}); r = runtime.production.produce(stock, b.get('recipe') or {}, int(b.get('workers', 1)), float(b.get('periods', 1)))
         if not r.get('ok'): return jsonify(r), 409
         worlds.save(w); return jsonify(r), 200
-
     @bp.post('/worlds/<world_id>/economy/tick')
     def economy_tick(world_id):
         w = world_or_404(world_id)
         if not w: return jsonify({'error': 'Mundo não encontrado'}), 404
         b = request.get_json(silent=True) or {}; w['economia'] = runtime.economy_system.tick(w.setdefault('economia', {}), float(b.get('periods', 1))); worlds.save(w); return jsonify(w['economia'])
-
     @bp.post('/worlds/<world_id>/diplomacy')
     def diplomacy(world_id):
         b = request.get_json(silent=True) or {}; score = runtime.diplomacy.score(float(b.get('relacao', 50)), float(b.get('poder_ratio', 1)), float(b.get('confianca', 50))); return jsonify({'score': round(score, 2), 'classificacao': runtime.diplomacy.classify(score)})
-
     @bp.post('/worlds/<world_id>/map/location')
     def map_location(world_id):
         w = world_or_404(world_id)
         if not w: return jsonify({'error': 'Mundo não encontrado'}), 404
-        b = request.get_json(silent=True) or {}; item = maps.add_location(w, str(b.get('id') or uuid.uuid4().hex[:8]), str(b.get('nome') or 'Local'), float(b.get('x', 0)), float(b.get('y', 0)), str(b.get('tipo') or 'local')); worlds.save(w); return jsonify({'local': item}), 201
-
+        b = request.get_json(silent=True) or {}; item = maps.add_location(w, valid_id(str(b.get('id') or uuid.uuid4().hex[:8])), str(b.get('nome') or 'Local'), float(b.get('x', 0)), float(b.get('y', 0)), str(b.get('tipo') or 'local')); worlds.save(w); return jsonify({'local': item}), 201
     @bp.get('/worlds/<world_id>/map/distance')
     def map_distance(world_id):
         w = world_or_404(world_id)
         if not w: return jsonify({'error': 'Mundo não encontrado'}), 404
-        try: return jsonify({'distancia': maps.distance(w, str(request.args.get('a')), str(request.args.get('b')))})
-        except KeyError as e: return jsonify({'error': str(e)}), 404
-
+        try: return jsonify({'distancia': maps.distance(w, valid_id(str(request.args.get('a'))), valid_id(str(request.args.get('b'))))})
+        except (KeyError, ValueError) as e: return jsonify({'error': str(e)}), 404
     @bp.post('/worlds/<world_id>/validate')
     def validate(world_id):
         w = world_or_404(world_id)
         if not w: return jsonify({'error': 'Mundo não encontrado'}), 404
         runtime.sync_entities_from_world(w); errors = runtime.audit.validate(w); return jsonify({'ok': not errors, 'validado': not errors, 'erros': errors, 'entidades': sum(e.world_id == str(world_id).zfill(3) for e in runtime.entities.values())}), 409 if errors else 200
-
     @bp.get('/worlds/<world_id>/memory')
-    def memory_list(world_id):
-        return jsonify({'memorias': memories.list(str(world_id).zfill(3))})
-
+    def memory_list(world_id): return jsonify({'memorias': memories.list(str(world_id).zfill(3))})
     @bp.post('/worlds/<world_id>/memory')
     def memory_create(world_id):
         b = request.get_json(silent=True) or {}
         try:
-            item = memories.add(str(world_id).zfill(3), str(b.get('conteudo') or b.get('content') or ''), str(b.get('tipo') or 'fato'), float(b.get('importancia', 0.5)), b.get('tags') or [], 'usuario')
-            return jsonify({'memoria': item}), 201
+            item = memories.add(str(world_id).zfill(3), str(b.get('conteudo') or b.get('content') or ''), str(b.get('tipo') or 'fato'), float(b.get('importancia', 0.5)), b.get('tags') or [], 'usuario'); return jsonify({'memoria': item}), 201
         except (ValueError, TypeError) as e: return jsonify({'error': str(e)}), 400
-
     @bp.patch('/worlds/<world_id>/memory/<memory_id>')
     def memory_update(world_id, memory_id):
         b = request.get_json(silent=True) or {}
         try:
-            item = memories.update(str(world_id).zfill(3), memory_id, **b)
+            item = memories.update(str(world_id).zfill(3), valid_id(memory_id), **b)
             if not item: return jsonify({'error': 'Memória não encontrada'}), 404
             return jsonify({'memoria': item})
         except (ValueError, TypeError) as e: return jsonify({'error': str(e)}), 400
-
     @bp.delete('/worlds/<world_id>/memory/<memory_id>')
     def memory_delete(world_id, memory_id):
-        if not memories.delete(str(world_id).zfill(3), memory_id): return jsonify({'error': 'Memória não encontrada'}), 404
+        try: ok = memories.delete(str(world_id).zfill(3), valid_id(memory_id))
+        except ValueError as e: return jsonify({'error': str(e)}), 400
+        if not ok: return jsonify({'error': 'Memória não encontrada'}), 404
         return jsonify({'ok': True})
-
     @bp.get('/worlds/<world_id>/rag/sources')
     def rag_sources(world_id):
         nb = notebook(world_id); return jsonify({'fontes': [{'id': d.source_id, 'nome': d.name, 'mime_type': d.mime_type, 'metadata': d.metadata} for d in nb.documents.values()]})
-
     @bp.delete('/worlds/<world_id>/rag/sources/<source_id>')
     def rag_delete_source(world_id, source_id):
-        if not notebook(world_id).delete_source(source_id): return jsonify({'error': 'Fonte não encontrada'}), 404
+        try: ok = notebook(world_id).delete_source(valid_id(source_id))
+        except ValueError as e: return jsonify({'error': str(e)}), 400
+        if not ok: return jsonify({'error': 'Fonte não encontrada'}), 404
         return jsonify({'ok': True})
-
     @bp.post('/worlds/<world_id>/rag/sources/<source_id>/reindex')
     def rag_reindex_source(world_id, source_id):
-        try: return jsonify({'source': asdict(notebook(world_id).reindex_source(source_id))})
+        try: return jsonify({'source': asdict(notebook(world_id).reindex_source(valid_id(source_id)))})
         except KeyError: return jsonify({'error': 'Fonte não encontrada'}), 404
-
+        except ValueError as e: return jsonify({'error': str(e)}), 400
     @bp.get('/worlds/<world_id>/rag/search')
     def rag_search(world_id):
         q = str(request.args.get('q', '')).strip()
@@ -179,7 +148,6 @@ def install(app, worlds, memories, store):
         try: limit = min(30, max(1, int(request.args.get('limit', 8))))
         except ValueError: return jsonify({'error': 'limit inválido'}), 400
         return jsonify({'resultados': [asdict(x) for x in notebook(world_id).search(q, limit)]})
-
     @bp.get('/worlds/<world_id>/rag/context')
     def rag_context(world_id):
         q = str(request.args.get('q', '')).strip()
@@ -187,13 +155,11 @@ def install(app, worlds, memories, store):
         try: limit = min(12, max(1, int(request.args.get('limit', 6))))
         except ValueError: return jsonify({'error': 'limit inválido'}), 400
         text, refs = notebook(world_id).context(q, limit); return jsonify({'contexto': text, 'citacoes': [asdict(x) for x in refs]})
-
     @bp.post('/worlds/<world_id>/rag/source')
     def rag_source(world_id):
         b = request.get_json(silent=True) or {}; text = str(b.get('text') or '')
         if not text: return jsonify({'error': 'text obrigatório'}), 400
         d = notebook(world_id).add_text(str(b.get('title') or 'Fonte sem título'), text, str(b.get('mime_type') or 'text/plain'), {str(k): str(v) for k, v in (b.get('metadata') or {}).items()}); return jsonify({'source': asdict(d)}), 201
-
     @bp.post('/worlds/<world_id>/rag/upload')
     def rag_upload(world_id):
         up = request.files.get('file')
@@ -208,11 +174,8 @@ def install(app, worlds, memories, store):
                 try:
                     nb = notebook(world_id); d = nb.ingestor.from_file(path, {'filename': up.filename}); nb.documents[d.source_id] = d; nb.index.upsert(nb.ingestor.chunk(d)); nb._save_sources()
                 finally: path.unlink(missing_ok=True)
-            else:
-                d = notebook(world_id).add_text(up.filename, raw.decode('utf-8'), up.mimetype or 'text/plain', {'filename': up.filename})
+            else: d = notebook(world_id).add_text(up.filename, raw.decode('utf-8'), up.mimetype or 'text/plain', {'filename': up.filename})
             return jsonify({'source': asdict(d)}), 201
         except UnicodeDecodeError: return jsonify({'error': 'Texto deve estar em UTF-8.'}), 415
         except (ValueError, OSError) as e: return jsonify({'error': str(e)}), 422
-
-    app.register_blueprint(bp)
-    return runtime, notebook
+    app.register_blueprint(bp); return runtime, notebook
