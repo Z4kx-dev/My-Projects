@@ -4,9 +4,9 @@ import json
 from dataclasses import dataclass, field
 from typing import Any
 
-from .client import OllamaClient, LLMError
+from .client import OllamaClient
 from .orchestrator import RPGOrchestrator
-from backend.platform.ai_guard import AIGuard
+from backend.platform.ai_guard import Decision, ToolPolicy
 from backend.tools.registry import ToolRegistry
 
 
@@ -19,13 +19,13 @@ class AgentResult:
 
 
 class RPGAgent:
-    """Loop de agente determinístico: contexto -> LLM -> tools -> contexto atualizado."""
+    """Agente com ciclo controlado de contexto -> LLM -> tool -> resultado."""
 
-    def __init__(self, llm: OllamaClient, orchestrator: RPGOrchestrator, tools: ToolRegistry, guard: AIGuard | None = None, max_iterations: int = 6):
+    def __init__(self, llm: OllamaClient, orchestrator: RPGOrchestrator, tools: ToolRegistry, max_iterations: int = 6):
         self.llm = llm
         self.orchestrator = orchestrator
         self.tools = tools
-        self.guard = guard
+        self.policy = ToolPolicy()
         self.max_iterations = max(1, max_iterations)
 
     def run(self, world_id: str, chat_id: str, user_text: str, options: dict[str, Any] | None = None) -> AgentResult:
@@ -59,8 +59,8 @@ class RPGAgent:
                 if not isinstance(arguments, dict):
                     arguments = {}
                 try:
-                    if self.guard is not None:
-                        self.guard.check(name, arguments)
+                    reason = str(arguments.pop("reason", "ação solicitada pelo estado atual do mundo"))
+                    self.policy.check(Decision(name, arguments, reason))
                     value = self.tools.call(name, arguments)
                     result = {"ok": True, "resultado": value}
                 except Exception as exc:
