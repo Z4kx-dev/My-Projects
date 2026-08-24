@@ -28,20 +28,11 @@ class TextChunk:
 
 
 class DocumentIngestor:
-    """Ingestão determinística para texto/Markdown/HTML/JSON simples.
-
-    PDF/DOCX devem passar por adaptadores externos de extração; o núcleo não
-    finge extrair formatos binários sem uma biblioteca apropriada.
-    """
+    """Ingestão determinística de fontes textuais e documentos comuns."""
 
     TEXT_TYPES = {
-        ".txt": "text/plain",
-        ".md": "text/markdown",
-        ".markdown": "text/markdown",
-        ".html": "text/html",
-        ".htm": "text/html",
-        ".json": "application/json",
-        ".csv": "text/csv",
+        ".txt": "text/plain", ".md": "text/markdown", ".markdown": "text/markdown",
+        ".html": "text/html", ".htm": "text/html", ".json": "application/json", ".csv": "text/csv",
     }
 
     def from_text(self, name: str, text: str, mime_type: str = "text/plain", metadata: dict[str, str] | None = None) -> SourceDocument:
@@ -51,10 +42,14 @@ class DocumentIngestor:
 
     def from_file(self, path: str | Path, metadata: dict[str, str] | None = None) -> SourceDocument:
         p = Path(path)
-        mime = self.TEXT_TYPES.get(p.suffix.lower())
-        if mime is None:
-            raise ValueError(f"Formato não suportado pelo núcleo de ingestão: {p.suffix or '<sem extensão>'}")
-        return self.from_text(p.name, p.read_text(encoding="utf-8"), mime, metadata)
+        suffix = p.suffix.lower()
+        if suffix in self.TEXT_TYPES:
+            return self.from_text(p.name, p.read_text(encoding="utf-8"), self.TEXT_TYPES[suffix], metadata)
+        if suffix in {".pdf", ".docx"}:
+            from .extractors import extract_text
+            text, mime = extract_text(p)
+            return self.from_text(p.name, text, mime, metadata)
+        raise ValueError(f"Formato não suportado: {suffix or '<sem extensão>'}")
 
     def chunk(self, document: SourceDocument, max_chars: int = 1200, overlap: int = 180) -> list[TextChunk]:
         if max_chars < 100:
