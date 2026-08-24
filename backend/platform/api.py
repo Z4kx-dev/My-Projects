@@ -46,12 +46,9 @@ def install(app, worlds, memories, store):
         try:
             r = runtime.simulate(w, float(b.get('hours', 1)))
             errors = runtime.audit.validate(w)
-            if errors:
-                return jsonify({'error': 'Estado inválido após simulação', 'erros': errors}), 409
-            worlds.save(w)
-            return jsonify(r)
-        except (ValueError, ValidationError) as e:
-            return jsonify({'error': str(e)}), 400
+            if errors: return jsonify({'error': 'Estado inválido após simulação', 'erros': errors}), 409
+            worlds.save(w); return jsonify(r)
+        except (ValueError, ValidationError) as e: return jsonify({'error': str(e)}), 400
 
     @bp.post('/worlds/<world_id>/snapshot')
     def snapshot(world_id):
@@ -135,21 +132,61 @@ def install(app, worlds, memories, store):
         if not w: return jsonify({'error': 'Mundo não encontrado'}), 404
         runtime.sync_entities_from_world(w); errors = runtime.audit.validate(w); return jsonify({'ok': not errors, 'validado': not errors, 'erros': errors, 'entidades': sum(e.world_id == str(world_id).zfill(3) for e in runtime.entities.values())}), 409 if errors else 200
 
+    @bp.get('/worlds/<world_id>/memory')
+    def memory_list(world_id):
+        return jsonify({'memorias': memories.list(str(world_id).zfill(3))})
+
+    @bp.post('/worlds/<world_id>/memory')
+    def memory_create(world_id):
+        b = request.get_json(silent=True) or {}
+        try:
+            item = memories.add(str(world_id).zfill(3), str(b.get('conteudo') or b.get('content') or ''), str(b.get('tipo') or 'fato'), float(b.get('importancia', 0.5)), b.get('tags') or [], 'usuario')
+            return jsonify({'memoria': item}), 201
+        except (ValueError, TypeError) as e: return jsonify({'error': str(e)}), 400
+
+    @bp.patch('/worlds/<world_id>/memory/<memory_id>')
+    def memory_update(world_id, memory_id):
+        b = request.get_json(silent=True) or {}
+        try:
+            item = memories.update(str(world_id).zfill(3), memory_id, **b)
+            if not item: return jsonify({'error': 'Memória não encontrada'}), 404
+            return jsonify({'memoria': item})
+        except (ValueError, TypeError) as e: return jsonify({'error': str(e)}), 400
+
+    @bp.delete('/worlds/<world_id>/memory/<memory_id>')
+    def memory_delete(world_id, memory_id):
+        if not memories.delete(str(world_id).zfill(3), memory_id): return jsonify({'error': 'Memória não encontrada'}), 404
+        return jsonify({'ok': True})
+
     @bp.get('/worlds/<world_id>/rag/sources')
     def rag_sources(world_id):
         nb = notebook(world_id); return jsonify({'fontes': [{'id': d.source_id, 'nome': d.name, 'mime_type': d.mime_type, 'metadata': d.metadata} for d in nb.documents.values()]})
+
+    @bp.delete('/worlds/<world_id>/rag/sources/<source_id>')
+    def rag_delete_source(world_id, source_id):
+        if not notebook(world_id).delete_source(source_id): return jsonify({'error': 'Fonte não encontrada'}), 404
+        return jsonify({'ok': True})
+
+    @bp.post('/worlds/<world_id>/rag/sources/<source_id>/reindex')
+    def rag_reindex_source(world_id, source_id):
+        try: return jsonify({'source': asdict(notebook(world_id).reindex_source(source_id))})
+        except KeyError: return jsonify({'error': 'Fonte não encontrada'}), 404
 
     @bp.get('/worlds/<world_id>/rag/search')
     def rag_search(world_id):
         q = str(request.args.get('q', '')).strip()
         if not q: return jsonify({'error': 'q obrigatório'}), 400
-        return jsonify({'resultados': [asdict(x) for x in notebook(world_id).search(q, min(30, max(1, int(request.args.get('limit', 8)))))]})
+        try: limit = min(30, max(1, int(request.args.get('limit', 8))))
+        except ValueError: return jsonify({'error': 'limit inválido'}), 400
+        return jsonify({'resultados': [asdict(x) for x in notebook(world_id).search(q, limit)]})
 
     @bp.get('/worlds/<world_id>/rag/context')
     def rag_context(world_id):
         q = str(request.args.get('q', '')).strip()
         if not q: return jsonify({'error': 'q obrigatório'}), 400
-        text, refs = notebook(world_id).context(q, min(12, max(1, int(request.args.get('limit', 6))))); return jsonify({'contexto': text, 'citacoes': [asdict(x) for x in refs]})
+        try: limit = min(12, max(1, int(request.args.get('limit', 6))))
+        except ValueError: return jsonify({'error': 'limit inválido'}), 400
+        text, refs = notebook(world_id).context(q, limit); return jsonify({'contexto': text, 'citacoes': [asdict(x) for x in refs]})
 
     @bp.post('/worlds/<world_id>/rag/source')
     def rag_source(world_id):
