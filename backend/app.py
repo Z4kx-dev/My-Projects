@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import re
 import sys
@@ -18,6 +19,7 @@ from backend.memory.context import ContextBuilder
 from backend.memory.retrieval import HybridRetriever
 from backend.ai.client import OllamaClient, LLMError
 from backend.ai.orchestrator import RPGOrchestrator
+from backend.ai.agent import RPGAgent
 from backend.tools.registry import ToolRegistry
 from backend.tools.builtin import register_builtin
 
@@ -186,7 +188,6 @@ def chat_api():
             messages = orchestrator.messages(wid, cid, text)
             for token in llm.chat(messages, stream=True, options=body.get("options") if isinstance(body.get("options"), dict) else None):
                 full.append(token)
-                import json
                 yield "data: " + json.dumps({"token": token}, ensure_ascii=False) + "\n\n"
             answer = "".join(full).strip()
             if answer:
@@ -194,13 +195,34 @@ def chat_api():
                 memories.add(wid, answer, "resposta", 0.15, ["chat"], "ia")
             yield "data: [DONE]\n\n"
         except LLMError as exc:
-            import json
             yield "data: " + json.dumps({"error": str(exc)}, ensure_ascii=False) + "\n\n"
         except Exception as exc:
-            import json
             yield "data: " + json.dumps({"error": f"Erro interno: {exc}"}, ensure_ascii=False) + "\n\n"
 
     return Response(stream_with_context(stream()), mimetype="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@app.post("/api/agent")
+def agent_api():
+    body = request.get_json(silent=True) or {}
+    try:
+        wid, cid = normalize_id(body.get("world_id")), normalize_id(body.get("chat_id"))
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    text = str(body.get("message") or "").strip()
+    if not text:
+        return jsonify({"error": "Mensagem vazia."}), 400
+    if not worlds.get(wid) or not chats.get(wid, cid):
+        return jsonify({"error": "Mundo ou chat não encontrado."}), 404
+    try:
+        result = RPGAgent(llm, orchestrator, tools, max_iterations=min(10, max(1, int(body.get("max_iterations", 6))))).run(wid, cid, text, body.get("options") if isinstance(body.get("options"), dict) else None)
+        chats.append(wid, cid, "user", text)
+        if result.answer:
+            chats.append(wid, cid, "assistant", result.answer)
+            memories.add(wid, result.answer, "resposta", 0.2, ["agente", "chat"], "ia")
+        return jsonify({"resposta": result.answer, "tool_calls": result.tool_calls, "tool_results": result.tool_results, "iteracoes": result.iterations})
+    except LLMError as exc:
+        return jsonify({"error": str(exc)}), 502
 
 
 @app.errorhandler(Exception)
@@ -210,7 +232,8 @@ def handle_error(exc):
 
 # Plataforma avançada: runtime determinístico + RAG local + APIs v2.
 from backend.platform.api import install as install_platform
-platform_runtime, rag_store = install_platform(app, worlds, memories, store)
+platform_runtime, notebook_provider = install_platform(app, worlds, memories, store)
+context.rag_provider = lambda world_id, query: notebook_provider(world_id).context(query, 6)
 
 
 if __name__ == "__main__":
