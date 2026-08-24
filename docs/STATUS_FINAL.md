@@ -1,51 +1,38 @@
-# Status técnico — plataforma RPG AI
+# Status técnico — mega fase
 
 ## Objetivo
-Construir uma plataforma de RPG persistente inspirada na experiência de chat + notebook de fontes, com o LLM separado do estado determinístico do mundo.
+Levar a plataforma ao maior nível funcional possível em uma única rodada, com piso de 80%, meta de 90% e objetivo de 99%.
 
-## Implementado nesta branch
-
-- aplicação Flask existente preservada;
-- persistência JSON e compatibilidade com dados legados;
-- memória persistente e recuperação lexical existente;
-- runtime determinístico para entidades e passagem de tempo;
-- eventos e agenda futura;
-- ledger causal;
-- invariantes de estado;
-- necessidades biológicas básicas;
-- economia de oferta/demanda e transação;
-- combate baseado em atributos observáveis;
-- população;
+## Entregas integradas
+- aplicação Flask preservada e ampliada;
+- persistência JSON e compatibilidade legada;
+- memória persistente e recuperação;
+- runtime determinístico e simulação autônoma;
+- decisões de NPC baseadas em necessidades, objetivos e rotina;
+- eventos, agenda e ledger causal;
+- auditoria de invariantes do mundo;
+- população e demografia básica;
+- economia, preços, produção, estoque e transações;
 - clima;
-- geografia e cálculo de viagem;
-- sociedade;
-- diplomacia e pressão de guerra;
-- missões;
-- snapshots com hash SHA-256;
-- RAG local por chunking e índice lexical;
-- camadas de memória episódica, semântica, procedural, social, estado e mundial;
-- guard de ferramentas e detector de contradições;
-- API v2 integrada ao Flask;
-- testes unitários das novas camadas.
+- sociedade, relações e diplomacia;
+- combate baseado em atributos observáveis;
+- snapshots e backups com hashes/manifestos;
+- RAG por fontes, chunks, busca e citações;
+- ingestão de PDF/DOCX/TXT/MD/HTML/JSON/CSV;
+- camadas de memória;
+- guard e ferramentas nativas do agente;
+- APIs v2 integradas;
+- testes unitários, integração e longa duração;
+- Docker/Gunicorn;
+- CI com compilação, testes, smoke import e build do container.
 
-## Limitações declaradas
+## Gate de qualidade
+O percentual final não é aumentado apenas por quantidade de código. Uma capacidade conta quando está implementada, integrada e coberta por teste/verificação.
 
-Esta branch não deve ser chamada de produto 100% concluído enquanto não houver:
-
-1. execução comprovada da CI;
-2. ingestão de PDF/DOCX com extração de páginas;
-3. embeddings e índice vetorial persistente;
-4. reranking híbrido real;
-5. autenticação/autorização;
-6. UI completa para fontes, entidades, mapas e estado;
-7. simulação populacional de longa duração validada;
-8. sistema de arquivos seguro e uploads;
-9. observabilidade e métricas;
-10. testes de carga e recuperação após falhas;
-11. empacotamento e instalação reproduzível.
-
-## Regra de qualidade
-Nenhuma funcionalidade deve ser marcada como concluída apenas por possuir uma classe ou endpoint. Ela precisa estar integrada, testada e documentada.
-
-## Próximo gate
-Executar a suíte completa, corrigir todas as regressões, depois validar um mundo por 1 dia, 1 mês, 1 ano e 10 anos simulados.
+## Riscos residuais
+- a execução efetiva da CI precisa ser observada pelo GitHub;
+- um provedor LLM depende de configuração local e modelo disponível;
+- embeddings densos/reranking podem ser aprimorados além do índice lexical atual;
+- mapas, editor e painéis administrativos ainda precisam de refinamento de produto;
+- autenticação/autorização e hardening adicional são necessários para exposição pública;
+- testes de carga e recuperação de falhas em escala ainda precisam de execução real.
