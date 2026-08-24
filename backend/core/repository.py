@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from threading import RLock
 from typing import Any
 from .storage import JsonStore
 from .models import WorldState, Message, utc_now
@@ -40,6 +41,13 @@ class WorldRepository:
 class ChatRepository:
     def __init__(self, store: JsonStore, worlds: WorldRepository):
         self.store, self.worlds = store, worlds
+        self._locks: dict[tuple[str, str], RLock] = {}
+        self._locks_guard = RLock()
+
+    def _lock_for(self, world_id: str, chat_id: str) -> RLock:
+        key = (world_id, chat_id)
+        with self._locks_guard:
+            return self._locks.setdefault(key, RLock())
 
     def new_parts(self, world_id: str, chat_id: str) -> tuple[str, ...]:
         return ("mundos", world_id, "chats", f"{chat_id}.json")
@@ -58,17 +66,23 @@ class ChatRepository:
         self.store.write(chat, *self.new_parts(chat["world_id"], chat["id"]))
 
     def create(self, world_id: str, chat_id: str, nome: str = "Nova conversa") -> dict[str, Any]:
-        chat = {"id": chat_id, "world_id": world_id, "nome": nome, "criado_em": utc_now(), "atualizado_em": utc_now(), "mensagens": []}
-        self.save(chat)
-        return chat
+        lock = self._lock_for(world_id, chat_id)
+        with lock:
+            if self.get(world_id, chat_id):
+                raise FileExistsError("Chat já existe")
+            chat = {"id": chat_id, "world_id": world_id, "nome": nome, "criado_em": utc_now(), "atualizado_em": utc_now(), "mensagens": []}
+            self.save(chat)
+            return chat
 
     def append(self, world_id: str, chat_id: str, role: str, content: str, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
-        chat = self.get(world_id, chat_id)
-        if not chat:
-            raise FileNotFoundError("Chat não encontrado")
-        chat.setdefault("mensagens", []).append(Message(role=role, content=content, metadata=metadata or {}).__dict__)
-        self.save(chat)
-        return chat
+        lock = self._lock_for(world_id, chat_id)
+        with lock:
+            chat = self.get(world_id, chat_id)
+            if not chat:
+                raise FileNotFoundError("Chat não encontrado")
+            chat.setdefault("mensagens", []).append(Message(role=role, content=content, metadata=metadata or {}).__dict__)
+            self.save(chat)
+            return chat
 
     def list(self, world_id: str) -> list[dict[str, Any]]:
         roots = [self.store.path("mundos", world_id, "chats"), self.store.path("mundos", world_id, "chat")]
@@ -77,7 +91,7 @@ class ChatRepository:
             if not root.exists():
                 continue
             for p in root.glob("*.json"):
-                chat = self.store.read(*(("mundos", world_id, root.name, p.name)))
+                chat = self.store.read("mundos", world_id, root.name, p.name)
                 if chat:
                     result[str(chat["id"])] = {"id": chat["id"], "nome": chat.get("nome", "Chat"), "criado_em": chat.get("criado_em"), "atualizado_em": chat.get("atualizado_em"), "mensagens": len(chat.get("mensagens", []))}
         return [result[k] for k in sorted(result)]
