@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rpg://schemas/tempo/v1",
+  "title": "Tempo do mundo",
+  "type": "object",
+  "properties": {
+    "instante": {"type": "string"},
+    "ano": {"type": "integer"},
+    "estacao": {"type": "integer", "minimum": 1},
+    "mes": {"type": "integer", "minimum": 1},
+    "semana": {"type": "integer", "minimum": 1},
+    "dia": {"type": "integer", "minimum": 1},
+    "hora": {"type": "string"}
+  },
+  "additionalProperties": true
+}
