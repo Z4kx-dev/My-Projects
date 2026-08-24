@@ -25,12 +25,10 @@ class WorldRepository:
         return world
 
     def list(self) -> list[dict[str, Any]]:
-        result = []
-        for name in self.store.list_files("mundos", suffix=".json"):
-            pass
         root = self.store.path("mundos")
         if not root.exists():
-            return result
+            return []
+        result = []
         for directory in sorted(root.iterdir()):
             if directory.is_dir():
                 world = self.get(directory.name)
@@ -41,18 +39,23 @@ class WorldRepository:
 
 class ChatRepository:
     def __init__(self, store: JsonStore, worlds: WorldRepository):
-        self.store = store
-        self.worlds = worlds
+        self.store, self.worlds = store, worlds
 
-    def path_parts(self, world_id: str, chat_id: str) -> tuple[str, ...]:
+    def new_parts(self, world_id: str, chat_id: str) -> tuple[str, ...]:
         return ("mundos", world_id, "chats", f"{chat_id}.json")
 
+    def legacy_parts(self, world_id: str, chat_id: str) -> tuple[str, ...]:
+        return ("mundos", world_id, "chat", f"{chat_id}.json")
+
     def get(self, world_id: str, chat_id: str) -> dict[str, Any] | None:
-        return self.store.read(*self.path_parts(world_id, chat_id))
+        current = self.store.read(*self.new_parts(world_id, chat_id))
+        if current is not None:
+            return current
+        return self.store.read(*self.legacy_parts(world_id, chat_id))
 
     def save(self, chat: dict[str, Any]) -> None:
         chat["atualizado_em"] = utc_now()
-        self.store.write(chat, *self.path_parts(chat["world_id"], chat["id"]))
+        self.store.write(chat, *self.new_parts(chat["world_id"], chat["id"]))
 
     def create(self, world_id: str, chat_id: str, nome: str = "Nova conversa") -> dict[str, Any]:
         chat = {"id": chat_id, "world_id": world_id, "nome": nome, "criado_em": utc_now(), "atualizado_em": utc_now(), "mensagens": []}
@@ -68,12 +71,13 @@ class ChatRepository:
         return chat
 
     def list(self, world_id: str) -> list[dict[str, Any]]:
-        root = self.store.path("mundos", world_id, "chats")
-        if not root.exists():
-            return []
-        result = []
-        for p in sorted(root.glob("*.json")):
-            chat = self.store.read("mundos", world_id, "chats", p.name)
-            if chat:
-                result.append({"id": chat["id"], "nome": chat.get("nome", "Chat"), "criado_em": chat.get("criado_em"), "atualizado_em": chat.get("atualizado_em"), "mensagens": len(chat.get("mensagens", []))})
-        return result
+        roots = [self.store.path("mundos", world_id, "chats"), self.store.path("mundos", world_id, "chat")]
+        result: dict[str, dict[str, Any]] = {}
+        for root in roots:
+            if not root.exists():
+                continue
+            for p in root.glob("*.json"):
+                chat = self.store.read(*(("mundos", world_id, root.name, p.name)))
+                if chat:
+                    result[str(chat["id"])] = {"id": chat["id"], "nome": chat.get("nome", "Chat"), "criado_em": chat.get("criado_em"), "atualizado_em": chat.get("atualizado_em"), "mensagens": len(chat.get("mensagens", []))}
+        return [result[k] for k in sorted(result)]
