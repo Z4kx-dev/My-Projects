@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Callable, Iterator
 
 from .client import OllamaClient
 from .orchestrator import RPGOrchestrator
@@ -28,45 +28,72 @@ class RPGAgent:
         self.policy = ToolPolicy()
         self.max_iterations = max(1, max_iterations)
 
-    def run(self, world_id: str, chat_id: str, user_text: str, options: dict[str, Any] | None = None) -> AgentResult:
+    def _tool_round(self, messages: list[dict[str, Any]], calls: list, results: list, options: dict[str, Any] | None, cancel: Callable[[], bool] | None) -> tuple[str, bool]:
+        if cancel and cancel():
+            raise RuntimeError("Execução cancelada pelo usuário.")
+        raw = self.llm.chat(messages, stream=False, options=options, tools=self.tools.definitions(), cancel=cancel)
+        if not isinstance(raw, dict):
+            return str(raw), False
+        message = raw.get("message") or {}
+        tool_calls = message.get("tool_calls") or []
+        content = str(message.get("content") or "")
+        messages.append(message)
+        for call in tool_calls:
+            if cancel and cancel():
+                raise RuntimeError("Execução cancelada pelo usuário.")
+            function = call.get("function") or {}
+            name = str(function.get("name") or "")
+            arguments = function.get("arguments") or {}
+            if not name:
+                continue
+            if isinstance(arguments, str):
+                try:
+                    arguments = json.loads(arguments)
+                except json.JSONDecodeError as exc:
+                    result = {"ok": False, "erro": f"Argumentos JSON inválidos: {exc}"}
+                    results.append({"tool": name, "result": result})
+                    messages.append({"role": "tool", "content": json.dumps(result, ensure_ascii=False)})
+                    continue
+            arguments = dict(arguments) if isinstance(arguments, dict) else {}
+            try:
+                reason = str(arguments.pop("reason", "ação solicitada pelo estado atual do mundo"))
+                self.policy.check(Decision(name, arguments, reason))
+                value = self.tools.call(name, arguments)
+                result = {"ok": True, "resultado": value}
+            except Exception as exc:
+                result = {"ok": False, "erro": str(exc)}
+            calls.append({"tool": name, "arguments": dict(arguments)})
+            results.append({"tool": name, "result": result})
+            messages.append({"role": "tool", "content": json.dumps(result, ensure_ascii=False, default=str)})
+        return content, bool(tool_calls)
+
+    def run(self, world_id: str, chat_id: str, user_text: str, options: dict[str, Any] | None = None, cancel: Callable[[], bool] | None = None) -> AgentResult:
         messages = self.orchestrator.messages(world_id, chat_id, user_text)
         calls: list[dict[str, Any]] = []
         results: list[dict[str, Any]] = []
         for iteration in range(1, self.max_iterations + 1):
-            raw = self.llm.chat(messages, stream=False, options=options, tools=self.tools.definitions())
-            if not isinstance(raw, dict):
-                return AgentResult(str(raw), calls, results, iteration)
-            message = raw.get("message") or {}
-            tool_calls = message.get("tool_calls") or []
-            content = str(message.get("content") or "")
-            messages.append(message)
-            if not tool_calls:
+            content, has_tools = self._tool_round(messages, calls, results, options, cancel)
+            if not has_tools:
                 return AgentResult(content, calls, results, iteration)
-            for call in tool_calls:
-                function = call.get("function") or {}
-                name = str(function.get("name") or "")
-                arguments = function.get("arguments") or {}
-                if not name:
-                    continue
-                if isinstance(arguments, str):
-                    try:
-                        arguments = json.loads(arguments)
-                    except json.JSONDecodeError as exc:
-                        result = {"ok": False, "erro": f"Argumentos JSON inválidos: {exc}"}
-                        results.append({"tool": name, "result": result})
-                        messages.append({"role": "tool", "content": json.dumps(result, ensure_ascii=False)})
-                        continue
-                if not isinstance(arguments, dict):
-                    arguments = {}
-                arguments = dict(arguments)
-                try:
-                    reason = str(arguments.pop("reason", "ação solicitada pelo estado atual do mundo"))
-                    self.policy.check(Decision(name, arguments, reason))
-                    value = self.tools.call(name, arguments)
-                    result = {"ok": True, "resultado": value}
-                except Exception as exc:
-                    result = {"ok": False, "erro": str(exc)}
-                calls.append({"tool": name, "arguments": dict(arguments)})
-                results.append({"tool": name, "result": result})
-                messages.append({"role": "tool", "content": json.dumps(result, ensure_ascii=False, default=str)})
         return AgentResult("O agente atingiu o limite de iterações sem concluir a ação.", calls, results, self.max_iterations)
+
+    def stream(self, world_id: str, chat_id: str, user_text: str, options: dict[str, Any] | None = None, cancel: Callable[[], bool] | None = None) -> Iterator[str]:
+        """Executa tools em modo controlado e transmite a resposta final token a token."""
+        messages = self.orchestrator.messages(world_id, chat_id, user_text)
+        calls: list[dict[str, Any]] = []
+        results: list[dict[str, Any]] = []
+        for iteration in range(1, self.max_iterations + 1):
+            content, has_tools = self._tool_round(messages, calls, results, options, cancel)
+            if not has_tools:
+                # Reenvia o histórico final ao provedor em stream para o frontend receber tokens.
+                stream_messages = list(messages)
+                stream = self.llm.chat(stream_messages, stream=True, options=options, cancel=cancel)
+                if not hasattr(stream, "__iter__"):
+                    yield str(content)
+                    return
+                for token in stream:
+                    if cancel and cancel():
+                        raise RuntimeError("Execução cancelada pelo usuário.")
+                    yield str(token)
+                return
+        yield "O agente atingiu o limite de iterações sem concluir a ação."
