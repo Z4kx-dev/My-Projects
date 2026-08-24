@@ -15,6 +15,7 @@ jobs:
       - run: python -m compileall -q backend tests
       - run: python -m pytest -q
       - run: python -c "from backend.app import app; print(app.url_map)"
+      - run: python -c "from backend.app import app; c=app.test_client(); r=c.get('/api/health'); assert r.status_code==200; print(r.json)"
   container:
     runs-on: ubuntu-latest
     steps:
