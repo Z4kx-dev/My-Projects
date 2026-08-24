@@ -1,16 +1,26 @@
 from __future__ import annotations
 
-import json
+# IMPORTANTE: este arquivo também é executado diretamente com
+# `python backend/app.py`. Nesse modo o Python coloca `backend/` no início
+# de sys.path. Como o projeto possui `backend/platform/`, isso sombreia o
+# módulo padrão `platform` da stdlib e quebra imports como uuid -> platform.
+# Normalizamos o caminho ANTES de importar Flask ou qualquer outra biblioteca.
 import os
-import re
 import sys
-from flask import Flask, Response, jsonify, request, send_from_directory, stream_with_context
 
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-FRONT = os.path.join(BASE, "frontend")
-DATA = os.path.abspath(os.getenv("RPG_DATA_DIR", os.path.join(BASE, "data")))
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+if SCRIPT_DIR in sys.path:
+    sys.path.remove(SCRIPT_DIR)
 if BASE not in sys.path:
     sys.path.insert(0, BASE)
+
+import json
+import re
+from flask import Flask, Response, jsonify, request, send_from_directory, stream_with_context
+
+FRONT = os.path.join(BASE, "frontend")
+DATA = os.path.abspath(os.getenv("RPG_DATA_DIR", os.path.join(BASE, "data")))
 
 from backend.core.storage import JsonStore
 from backend.core.repository import WorldRepository, ChatRepository
@@ -60,9 +70,9 @@ def health():
         import requests
         r = requests.get(f"{llm.url}/api/tags", timeout=3)
         models = r.json().get("models", []) if r.ok else []
-        return jsonify({"ok": True, "ollama": r.ok, "model": llm.model, "models": [m.get("name") for m in models]})
+        return jsonify({"ok": r.ok, "ollama": r.ok, "model": llm.model, "models": [m.get("name") for m in models]})
     except Exception as exc:
-        return jsonify({"ok": True, "ollama": False, "model": llm.model, "models": [], "erro": str(exc)})
+        return jsonify({"ok": False, "ollama": False, "model": llm.model, "models": [], "erro": str(exc)}), 503
 
 
 @app.get("/api/worlds")
