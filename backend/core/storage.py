@@ -4,11 +4,15 @@ import json
 import os
 import tempfile
 from pathlib import Path
+from threading import RLock
 from typing import Any
 
 
 class JsonStore:
-    """Camada única de persistência. Escritas são atômicas e sempre UTF-8."""
+    """Persistência JSON com escrita atômica e exclusão segura de caminhos."""
+
+    _locks: dict[str, RLock] = {}
+    _locks_guard = RLock()
 
     def __init__(self, root: str):
         self.root = Path(root).resolve()
@@ -20,35 +24,48 @@ class JsonStore:
             raise ValueError("Caminho de persistência inválido")
         return p
 
+    def _lock_for(self, p: Path) -> RLock:
+        key = str(p)
+        with self._locks_guard:
+            return self._locks.setdefault(key, RLock())
+
     def read(self, *parts: str, default: Any = None) -> Any:
         p = self.path(*parts)
-        try:
-            with p.open("r", encoding="utf-8") as f:
-                return json.load(f)
-        except (OSError, ValueError):
-            return default
+        lock = self._lock_for(p)
+        with lock:
+            try:
+                with p.open("r", encoding="utf-8") as f:
+                    return json.load(f)
+            except FileNotFoundError:
+                return default
+            except (OSError, json.JSONDecodeError):
+                return default
 
     def write(self, data: Any, *parts: str) -> None:
         p = self.path(*parts)
         p.parent.mkdir(parents=True, exist_ok=True)
-        fd, tmp = tempfile.mkstemp(prefix=p.name + ".", suffix=".tmp", dir=str(p.parent))
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
-                f.flush()
-                os.fsync(f.fileno())
-            os.replace(tmp, p)
-        finally:
-            if os.path.exists(tmp):
-                os.unlink(tmp)
+        lock = self._lock_for(p)
+        with lock:
+            fd, tmp = tempfile.mkstemp(prefix=p.name + ".", suffix=".tmp", dir=str(p.parent))
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as f:
+                    json.dump(data, f, ensure_ascii=False, indent=2)
+                    f.flush()
+                    os.fsync(f.fileno())
+                os.replace(tmp, p)
+            finally:
+                if os.path.exists(tmp):
+                    os.unlink(tmp)
 
     def delete(self, *parts: str) -> bool:
         p = self.path(*parts)
-        try:
-            p.unlink()
-            return True
-        except FileNotFoundError:
-            return False
+        lock = self._lock_for(p)
+        with lock:
+            try:
+                p.unlink()
+                return True
+            except FileNotFoundError:
+                return False
 
     def list_files(self, *parts: str, suffix: str = ".json") -> list[str]:
         p = self.path(*parts)
