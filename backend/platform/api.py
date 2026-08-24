@@ -26,7 +26,7 @@ def install(app, worlds, memories, store):
 
     @bp.get("/status")
     def status():
-        return jsonify({"ok": True, "arquitetura": "motor-estado-llm-memoria-rag-tools", "entidades": len(runtime.entities), "notebooks": len(notebooks), "guard": True})
+        return jsonify({"ok": True, "arquitetura": "motor-estado-llm-memoria-rag-tools", "entidades": len(runtime.entities), "notebooks": len(notebooks), "guard": True, "agente": True})
 
     @bp.get("/worlds/<world_id>/state")
     def state(world_id):
@@ -34,6 +34,7 @@ def install(app, worlds, memories, store):
         world = worlds.get(wid)
         if not world:
             return jsonify({"error": "Mundo não encontrado"}), 404
+        runtime.sync_entities_from_world(world)
         runtime.validator.validate_world(world)
         return jsonify({"world": world, "entities": [asdict(x) for x in runtime.entities.values() if x.world_id == wid]})
 
@@ -45,20 +46,38 @@ def install(app, worlds, memories, store):
             return jsonify({"error": "Mundo não encontrado"}), 404
         body = request.get_json(silent=True) or {}
         try:
-            result = runtime.advance(world, float(body.get("hours", 1)))
+            result = runtime.simulate(world, float(body.get("hours", 1)))
             worlds.save(world)
             return jsonify(result)
         except (ValueError, ValidationError) as exc:
             return jsonify({"error": str(exc)}), 400
 
+    @bp.post("/worlds/<world_id>/snapshot")
+    def snapshot(world_id):
+        wid = str(world_id).zfill(3)
+        world = worlds.get(wid)
+        if not world:
+            return jsonify({"error": "Mundo não encontrado"}), 404
+        runtime.sync_entities_from_world(world)
+        runtime.persist_entities_to_world(world)
+        worlds.save(world)
+        body = request.get_json(silent=True) or {}
+        return jsonify({"snapshot": runtime.snapshots.save(wid, world, str(body.get("label") or "manual"))}), 201
+
     @bp.post("/worlds/<world_id>/entities")
     def entity(world_id):
         wid = str(world_id).zfill(3)
+        world = worlds.get(wid)
+        if not world:
+            return jsonify({"error": "Mundo não encontrado"}), 404
         body = request.get_json(silent=True) or {}
         entity_id = str(body.get("id") or uuid.uuid4().hex[:12])
         item = Entity(entity_id, str(body.get("name") or "Sem nome"), str(body.get("kind") or "npc"), wid, body.get("attributes") or {}, body.get("needs") or {}, body.get("goals") or [], body.get("relations") or {}, body.get("memory_ids") or [])
         try:
+            runtime.sync_entities_from_world(world)
             runtime.register_entity(item)
+            runtime.persist_entities_to_world(world)
+            worlds.save(world)
         except ValidationError as exc:
             return jsonify({"error": str(exc)}), 400
         return jsonify({"entity": asdict(item)}), 201
@@ -132,8 +151,12 @@ def install(app, worlds, memories, store):
         if not world:
             return jsonify({"error": "Mundo não encontrado"}), 404
         try:
+            runtime.sync_entities_from_world(world)
             runtime.validator.validate_world(world)
-            return jsonify({"ok": True, "validado": True})
+            for entity in runtime.entities.values():
+                if entity.world_id == wid:
+                    runtime.validator.validate_entity(asdict(entity))
+            return jsonify({"ok": True, "validado": True, "entidades": sum(e.world_id == wid for e in runtime.entities.values())})
         except ValidationError as exc:
             return jsonify({"ok": False, "validado": False, "error": str(exc)}), 409
 
