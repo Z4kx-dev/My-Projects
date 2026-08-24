@@ -208,5 +208,10 @@ def handle_error(exc):
     return jsonify({"error": str(exc)}), 500
 
 
+# Plataforma avançada: runtime determinístico + RAG local + APIs v2.
+from backend.platform.api import install as install_platform
+platform_runtime, rag_store = install_platform(app, worlds, memories, store)
+
+
 if __name__ == "__main__":
     app.run(host=os.getenv("HOST", "0.0.0.0"), port=int(os.getenv("PORT", "5000")), debug=False, threaded=True)
