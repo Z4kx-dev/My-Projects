@@ -2,8 +2,8 @@ from __future__ import annotations
 
 """Runtime integrado para campanhas persistentes.
 
-A camada não substitui o LLM: mantém o estado do mundo como fonte de verdade,
-registra eventos, memória, snapshots e valida mutações antes de aplicá-las.
+O estado do mundo é a fonte de verdade; o LLM apenas interpreta, planeja e usa
+ferramentas. Sistemas determinísticos aplicam tempo, necessidades e eventos.
 """
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone, timedelta
@@ -14,7 +14,6 @@ import math
 import os
 import random
 from typing import Any
-
 
 UTC = timezone.utc
 
@@ -57,8 +56,6 @@ class ValidationError(ValueError):
 
 
 class StateValidator:
-    """Invariantes centrais; falhas são rejeitadas antes de persistir."""
-
     REQUIRED_WORLD_KEYS = ("id", "nome", "tipo")
 
     def validate_world(self, world: dict[str, Any]) -> None:
@@ -73,14 +70,11 @@ class StateValidator:
     def validate_entity(self, entity: dict[str, Any]) -> None:
         if not entity.get("id") or not entity.get("world_id"):
             raise ValidationError("Entidade sem id/world_id")
-        attrs = entity.get("attributes", {})
-        for key, value in attrs.items():
+        for key, value in (entity.get("attributes") or {}).items():
             if key.endswith("_pct") and not 0 <= float(value) <= 100:
                 raise ValidationError(f"Atributo percentual inválido: {key}")
-        if entity.get("alive") is False and entity.get("needs", {}).get("vitalidade", 1) > 0:
-            # Morte pode existir por causas externas, mas não deve coexistir com
-            # vitalidade positiva sem um motivo explicitamente registrado.
-            if not entity.get("attributes", {}).get("death_cause"):
+        if entity.get("alive") is False and (entity.get("needs") or {}).get("vitalidade", 1) > 0:
+            if not (entity.get("attributes") or {}).get("death_cause"):
                 raise ValidationError("Morte sem causa registrada")
 
 
@@ -97,6 +91,7 @@ class CausalLedger:
     def explain(self, event_id: str) -> list[Event]:
         seen: set[str] = set()
         out: list[Event] = []
+
         def walk(eid: str) -> None:
             if eid in seen or eid not in self.events:
                 return
@@ -105,6 +100,7 @@ class CausalLedger:
             for parent in event.causes:
                 walk(parent)
             out.append(event)
+
         walk(event_id)
         return out
 
@@ -124,8 +120,6 @@ class EventScheduler:
 
 
 class NeedsEngine:
-    """Modelo simples e extensível de necessidades; não inventa dano."""
-
     DEFAULTS = {"fome": 0.0, "sede": 0.0, "sono": 0.0, "estresse": 0.0}
 
     def tick(self, entity: Entity, hours: float, activity: str = "repouso") -> dict[str, float]:
@@ -161,8 +155,6 @@ class EconomyEngine:
 
 
 class CombatEngine:
-    """Resolve um ataque por fatores observáveis; sem HP oculto."""
-
     def attack(self, attacker: Entity, defender: Entity, weapon: dict[str, Any], rng: random.Random | None = None) -> dict[str, Any]:
         rng = rng or random.Random()
         if not attacker.alive or not defender.alive:
@@ -181,8 +173,9 @@ class CombatEngine:
 
 class PopulationEngine:
     def birth(self, population: dict[str, Any], count: int = 1) -> None:
-        population["nascimentos"] = int(population.get("nascimentos", 0)) + max(0, count)
-        population["total"] = int(population.get("total", 0)) + max(0, count)
+        count = max(0, count)
+        population["nascimentos"] = int(population.get("nascimentos", 0)) + count
+        population["total"] = int(population.get("total", 0)) + count
 
     def death(self, population: dict[str, Any], count: int = 1) -> None:
         count = max(0, count)
@@ -226,6 +219,51 @@ class RPGRuntime:
             raise ValidationError(f"Entidade já existe: {entity.id}")
         self.entities[entity.id] = entity
         return entity
+
+    def sync_entities_from_world(self, world: dict[str, Any]) -> None:
+        wid = str(world["id"])
+        for raw in world.get("entidades", []):
+            if not isinstance(raw, dict) or not raw.get("id"):
+                continue
+            if str(raw.get("world_id", wid)) != wid:
+                continue
+            entity = Entity(
+                id=str(raw["id"]), name=str(raw.get("name") or raw.get("nome") or "Sem nome"),
+                kind=str(raw.get("kind") or raw.get("tipo") or "npc"), world_id=wid,
+                attributes=dict(raw.get("attributes") or raw.get("atributos") or {}),
+                needs=dict(raw.get("needs") or raw.get("necessidades") or {}),
+                goals=list(raw.get("goals") or raw.get("objetivos") or []),
+                relations=dict(raw.get("relations") or raw.get("relacoes") or {}),
+                memory_ids=list(raw.get("memory_ids") or []), alive=bool(raw.get("alive", True)),
+            )
+            self.entities[entity.id] = entity
+
+    def persist_entities_to_world(self, world: dict[str, Any]) -> None:
+        wid = str(world["id"])
+        world["entidades"] = [asdict(e) for e in self.entities.values() if e.world_id == wid]
+
+    def simulate(self, world: dict[str, Any], hours: float) -> dict[str, Any]:
+        """Avança tempo e executa a camada autônoma básica dos habitantes."""
+        self.sync_entities_from_world(world)
+        result = self.advance(world, hours)
+        for entity in list(self.entities.values()):
+            if entity.world_id != str(world["id"]) or not entity.alive:
+                continue
+            activity = str(entity.attributes.get("atividade", "repouso"))
+            self.needs.tick(entity, hours, activity)
+            entity.attributes["horas_simuladas"] = float(entity.attributes.get("horas_simuladas", 0)) + hours
+            # Objetivos são deliberadamente avaliados sem teletransporte ou efeitos
+            # mágicos: o agente/LLM pode decidir ações concretas depois.
+            if entity.goals and entity.needs.get("fome", 0) >= 80:
+                entity.attributes["prioridade_atual"] = "alimentar-se"
+            elif entity.goals:
+                entity.attributes["prioridade_atual"] = entity.goals[0].get("nome", entity.goals[0].get("name", "objetivo")) if isinstance(entity.goals[0], dict) else str(entity.goals[0])
+        self.persist_entities_to_world(world)
+        result["entidades_simuladas"] = sum(1 for e in self.entities.values() if e.world_id == str(world["id"]))
+        return result
+
+    def register_event(self, event: Event) -> Event:
+        return self.causal.append(event)
 
     def advance(self, world: dict[str, Any], hours: float) -> dict[str, Any]:
         self.validator.validate_world(world)
