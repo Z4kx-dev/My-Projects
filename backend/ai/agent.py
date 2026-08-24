@@ -58,6 +58,7 @@ class RPGAgent:
                         continue
                 if not isinstance(arguments, dict):
                     arguments = {}
+                arguments = dict(arguments)
                 try:
                     reason = str(arguments.pop("reason", "ação solicitada pelo estado atual do mundo"))
                     self.policy.check(Decision(name, arguments, reason))
@@ -65,7 +66,7 @@ class RPGAgent:
                     result = {"ok": True, "resultado": value}
                 except Exception as exc:
                     result = {"ok": False, "erro": str(exc)}
-                calls.append({"tool": name, "arguments": arguments})
+                calls.append({"tool": name, "arguments": dict(arguments)})
                 results.append({"tool": name, "result": result})
                 messages.append({"role": "tool", "content": json.dumps(result, ensure_ascii=False, default=str)})
         return AgentResult("O agente atingiu o limite de iterações sem concluir a ação.", calls, results, self.max_iterations)
