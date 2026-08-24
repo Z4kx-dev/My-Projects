@@ -1,278 +1,100 @@
 from __future__ import annotations
-
-"""Runtime integrado para campanhas persistentes.
-
-O estado do mundo é a fonte de verdade; o LLM apenas interpreta, planeja e usa
-ferramentas. Sistemas determinísticos aplicam tempo, necessidades e eventos.
-"""
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone, timedelta
 from copy import deepcopy
 from hashlib import sha256
-import json
-import math
-import os
-import random
+import json, os, random
 from typing import Any
-
-UTC = timezone.utc
-
-
-def now_iso() -> str:
-    return datetime.now(UTC).isoformat()
-
-
-def clamp(value: float, low: float = 0.0, high: float = 100.0) -> float:
-    return max(low, min(high, float(value)))
-
-
+from backend.engine.autonomy import AutonomyEngine
+from backend.engine.simulation_systems import PopulationSystem, EconomySystem, ProductionSystem, DiplomacySystem, ClimateSystem, GovernmentSystem
+from backend.platform.validation import WorldAudit
+UTC=timezone.utc
+def now_iso(): return datetime.now(UTC).isoformat()
+def clamp(v,lo=0,hi=100): return max(lo,min(hi,float(v)))
 @dataclass
-class Event:
-    id: str
-    world_id: str
-    kind: str
-    at: str
-    payload: dict[str, Any]
-    causes: list[str] = field(default_factory=list)
-    source: str = "system"
-
-
+class Event: id:str; world_id:str; kind:str; at:str; payload:dict[str,Any]; causes:list[str]=field(default_factory=list); source:str='system'
 @dataclass
 class Entity:
-    id: str
-    name: str
-    kind: str
-    world_id: str
-    attributes: dict[str, Any] = field(default_factory=dict)
-    needs: dict[str, float] = field(default_factory=dict)
-    goals: list[dict[str, Any]] = field(default_factory=list)
-    relations: dict[str, float] = field(default_factory=dict)
-    memory_ids: list[str] = field(default_factory=list)
-    alive: bool = True
-
-
-class ValidationError(ValueError):
-    pass
-
-
+ id:str; name:str; kind:str; world_id:str; attributes:dict[str,Any]=field(default_factory=dict); needs:dict[str,float]=field(default_factory=dict); goals:list[dict[str,Any]]=field(default_factory=list); relations:dict[str,float]=field(default_factory=dict); memory_ids:list[str]=field(default_factory=list); alive:bool=True
+class ValidationError(ValueError): pass
 class StateValidator:
-    REQUIRED_WORLD_KEYS = ("id", "nome", "tipo")
-
-    def validate_world(self, world: dict[str, Any]) -> None:
-        for key in self.REQUIRED_WORLD_KEYS:
-            if not world.get(key):
-                raise ValidationError(f"Campo obrigatório ausente: {key}")
-        if not isinstance(world.get("id"), str):
-            raise ValidationError("world.id deve ser string")
-        if not isinstance(world.get("regras", {}), dict):
-            raise ValidationError("world.regras deve ser objeto")
-
-    def validate_entity(self, entity: dict[str, Any]) -> None:
-        if not entity.get("id") or not entity.get("world_id"):
-            raise ValidationError("Entidade sem id/world_id")
-        for key, value in (entity.get("attributes") or {}).items():
-            if key.endswith("_pct") and not 0 <= float(value) <= 100:
-                raise ValidationError(f"Atributo percentual inválido: {key}")
-        if entity.get("alive") is False and (entity.get("needs") or {}).get("vitalidade", 1) > 0:
-            if not (entity.get("attributes") or {}).get("death_cause"):
-                raise ValidationError("Morte sem causa registrada")
-
-
+ def validate_world(self,w):
+  for k in ('id','nome','tipo'):
+   if not w.get(k): raise ValidationError(f'Campo obrigatório ausente: {k}')
+  if not isinstance(w.get('regras',{}),dict): raise ValidationError('world.regras deve ser objeto')
+ def validate_entity(self,e):
+  if not e.get('id') or not e.get('world_id'): raise ValidationError('Entidade sem id/world_id')
 class CausalLedger:
-    def __init__(self) -> None:
-        self.events: dict[str, Event] = {}
-
-    def append(self, event: Event) -> Event:
-        if event.id in self.events:
-            raise ValidationError(f"Evento duplicado: {event.id}")
-        self.events[event.id] = event
-        return event
-
-    def explain(self, event_id: str) -> list[Event]:
-        seen: set[str] = set()
-        out: list[Event] = []
-
-        def walk(eid: str) -> None:
-            if eid in seen or eid not in self.events:
-                return
-            seen.add(eid)
-            event = self.events[eid]
-            for parent in event.causes:
-                walk(parent)
-            out.append(event)
-
-        walk(event_id)
-        return out
-
-
+ def __init__(self): self.events={}
+ def append(self,e):
+  if e.id in self.events: raise ValidationError(f'Evento duplicado: {e.id}')
+  self.events[e.id]=e; return e
+ def explain(self,eid):
+  out=[]; seen=set()
+  def walk(i):
+   if i in seen or i not in self.events:return
+   seen.add(i); e=self.events[i]
+   for p in e.causes: walk(p)
+   out.append(e)
+  walk(eid); return out
 class EventScheduler:
-    def __init__(self) -> None:
-        self.queue: list[Event] = []
-
-    def schedule(self, event: Event) -> None:
-        self.queue.append(event)
-        self.queue.sort(key=lambda x: x.at)
-
-    def due(self, at: str) -> list[Event]:
-        ready = [e for e in self.queue if e.at <= at]
-        self.queue = [e for e in self.queue if e.at > at]
-        return ready
-
-
+ def __init__(self): self.queue=[]
+ def schedule(self,e): self.queue.append(e); self.queue.sort(key=lambda x:x.at)
+ def due(self,at):
+  ready=[e for e in self.queue if e.at<=at]; self.queue=[e for e in self.queue if e.at>at]; return ready
 class NeedsEngine:
-    DEFAULTS = {"fome": 0.0, "sede": 0.0, "sono": 0.0, "estresse": 0.0}
-
-    def tick(self, entity: Entity, hours: float, activity: str = "repouso") -> dict[str, float]:
-        if not entity.alive:
-            return entity.needs
-        rate = {"repouso": 1.0, "trabalho": 1.35, "combate": 2.5, "viagem": 1.8}.get(activity, 1.2)
-        for key, base in self.DEFAULTS.items():
-            entity.needs[key] = clamp(entity.needs.get(key, base) + hours * 2.0 * rate)
-        if activity == "repouso":
-            entity.needs["sono"] = clamp(entity.needs["sono"] - hours * 5.0)
-        return entity.needs
-
-
+ def tick(self,e,hours,activity='repouso'):
+  if not e.alive:return e.needs
+  rate={'repouso':1,'trabalho':1.35,'combate':2.5,'viagem':1.8}.get(activity,1.2)
+  for k in ('fome','sede','sono','estresse'): e.needs[k]=clamp(e.needs.get(k,0)+hours*2*rate)
+  if activity=='repouso':e.needs['sono']=clamp(e.needs.get('sono',0)-hours*5)
+  return e.needs
 class EconomyEngine:
-    def price(self, base: float, stock: float, demand: float, scarcity: float = 1.0) -> float:
-        if base < 0:
-            raise ValidationError("Preço base negativo")
-        ratio = demand / max(stock, 0.01)
-        multiplier = 1.0 + 0.35 * math.tanh((ratio - 1.0) * scarcity)
-        return round(max(0.01, base * multiplier), 2)
-
-    def transaction(self, buyer: dict[str, Any], seller: dict[str, Any], price: float, quantity: int = 1) -> None:
-        total = round(price * quantity, 2)
-        if quantity <= 0 or total < 0:
-            raise ValidationError("Transação inválida")
-        if float(buyer.get("money", 0)) < total:
-            raise ValidationError("Saldo insuficiente")
-        if int(seller.get("stock", 0)) < quantity:
-            raise ValidationError("Estoque insuficiente")
-        buyer["money"] = round(float(buyer.get("money", 0)) - total, 2)
-        seller["money"] = round(float(seller.get("money", 0)) + total, 2)
-        seller["stock"] = int(seller.get("stock", 0)) - quantity
-
-
+ def price(self,base,stock,demand,scarcity=1):
+  import math
+  return round(max(.01,float(base)*(1+.35*math.tanh((float(demand)/max(float(stock),.01)-1)*scarcity))),2)
+ def transaction(self,buyer,seller,price,quantity=1):
+  total=round(price*quantity,2)
+  if quantity<=0 or buyer.get('money',0)<total or seller.get('stock',0)<quantity: raise ValidationError('Transação inválida')
+  buyer['money']=round(buyer.get('money',0)-total,2); seller['money']=round(seller.get('money',0)+total,2); seller['stock']-=quantity
 class CombatEngine:
-    def attack(self, attacker: Entity, defender: Entity, weapon: dict[str, Any], rng: random.Random | None = None) -> dict[str, Any]:
-        rng = rng or random.Random()
-        if not attacker.alive or not defender.alive:
-            raise ValidationError("Combatentes incapacitados não podem atacar")
-        strength = clamp(attacker.attributes.get("forca", 50))
-        skill = clamp(attacker.attributes.get("tecnica", 20))
-        defense = clamp(defender.attributes.get("defesa", 50))
-        fatigue = clamp(attacker.attributes.get("fadiga_pct", 0))
-        reach = max(0.1, float(weapon.get("alcance", 1.0)))
-        power = max(0.1, float(weapon.get("potencia", 10)))
-        score = strength * 0.35 + skill * 0.45 + reach * 5 + rng.uniform(-10, 10) - fatigue * 0.2
-        hit = score >= defense * 0.8
-        severity = max(0.0, (score - defense * 0.6) / 100.0) * power if hit else 0.0
-        return {"acertou": hit, "severidade": round(severity, 3), "defesa": round(defense, 2), "score": round(score, 2)}
-
-
+ def attack(self,a,d,w,rng=None):
+  rng=rng or random.Random()
+  if not a.alive or not d.alive: raise ValidationError('Combatente incapacitado')
+  score=clamp(a.attributes.get('forca',50))*.35+clamp(a.attributes.get('tecnica',20))*.45+float(w.get('alcance',1))*5+rng.uniform(-10,10)-clamp(a.attributes.get('fadiga_pct',0))*.2
+  defense=clamp(d.attributes.get('defesa',50)); hit=score>=defense*.8; severity=max(0,(score-defense*.6)/100)*float(w.get('potencia',10)) if hit else 0
+  return {'acertou':hit,'severidade':round(severity,3),'score':round(score,2)}
 class PopulationEngine:
-    def birth(self, population: dict[str, Any], count: int = 1) -> None:
-        count = max(0, count)
-        population["nascimentos"] = int(population.get("nascimentos", 0)) + count
-        population["total"] = int(population.get("total", 0)) + count
-
-    def death(self, population: dict[str, Any], count: int = 1) -> None:
-        count = max(0, count)
-        population["mortes"] = int(population.get("mortes", 0)) + count
-        population["total"] = max(0, int(population.get("total", 0)) - count)
-
-
+ def birth(self,p,count=1): p['nascimentos']=int(p.get('nascimentos',0))+max(0,count); p['total']=int(p.get('total',0))+max(0,count)
+ def death(self,p,count=1): p['mortes']=int(p.get('mortes',0))+max(0,count); p['total']=max(0,int(p.get('total',0))-max(0,count))
 class SnapshotManager:
-    def __init__(self, root: str) -> None:
-        self.root = root
-
-    def save(self, world_id: str, state: dict[str, Any], label: str = "manual") -> dict[str, Any]:
-        payload = {"schema": 1, "world_id": world_id, "label": label, "created_at": now_iso(), "state": deepcopy(state)}
-        raw = json.dumps(payload, ensure_ascii=False, sort_keys=True).encode()
-        digest = sha256(raw).hexdigest()
-        payload["sha256"] = digest
-        directory = os.path.join(self.root, "worlds", world_id, "snapshots")
-        os.makedirs(directory, exist_ok=True)
-        path = os.path.join(directory, f"{digest[:16]}.json")
-        with open(path, "w", encoding="utf-8") as handle:
-            json.dump(payload, handle, ensure_ascii=False, indent=2)
-        return {"id": digest[:16], "sha256": digest, "path": path, "created_at": payload["created_at"]}
-
-
+ def __init__(self,root): self.root=root
+ def save(self,wid,state,label='manual'):
+  payload={'schema':1,'world_id':wid,'label':label,'created_at':now_iso(),'state':deepcopy(state)}; raw=json.dumps(payload,ensure_ascii=False,sort_keys=True).encode(); digest=sha256(raw).hexdigest(); payload['sha256']=digest
+  d=os.path.join(self.root,'worlds',wid,'snapshots'); os.makedirs(d,exist_ok=True); path=os.path.join(d,digest[:16]+'.json')
+  with open(path,'w',encoding='utf-8') as f: json.dump(payload,f,ensure_ascii=False,indent=2)
+  return {'id':digest[:16],'sha256':digest,'path':path,'created_at':payload['created_at']}
 class RPGRuntime:
-    def __init__(self, data_dir: str) -> None:
-        self.data_dir = data_dir
-        self.validator = StateValidator()
-        self.causal = CausalLedger()
-        self.scheduler = EventScheduler()
-        self.needs = NeedsEngine()
-        self.economy = EconomyEngine()
-        self.combat = CombatEngine()
-        self.population = PopulationEngine()
-        self.snapshots = SnapshotManager(data_dir)
-        self.entities: dict[str, Entity] = {}
-
-    def register_entity(self, entity: Entity) -> Entity:
-        self.validator.validate_entity(asdict(entity))
-        if entity.id in self.entities:
-            raise ValidationError(f"Entidade já existe: {entity.id}")
-        self.entities[entity.id] = entity
-        return entity
-
-    def sync_entities_from_world(self, world: dict[str, Any]) -> None:
-        wid = str(world["id"])
-        for raw in world.get("entidades", []):
-            if not isinstance(raw, dict) or not raw.get("id"):
-                continue
-            if str(raw.get("world_id", wid)) != wid:
-                continue
-            entity = Entity(
-                id=str(raw["id"]), name=str(raw.get("name") or raw.get("nome") or "Sem nome"),
-                kind=str(raw.get("kind") or raw.get("tipo") or "npc"), world_id=wid,
-                attributes=dict(raw.get("attributes") or raw.get("atributos") or {}),
-                needs=dict(raw.get("needs") or raw.get("necessidades") or {}),
-                goals=list(raw.get("goals") or raw.get("objetivos") or []),
-                relations=dict(raw.get("relations") or raw.get("relacoes") or {}),
-                memory_ids=list(raw.get("memory_ids") or []), alive=bool(raw.get("alive", True)),
-            )
-            self.entities[entity.id] = entity
-
-    def persist_entities_to_world(self, world: dict[str, Any]) -> None:
-        wid = str(world["id"])
-        world["entidades"] = [asdict(e) for e in self.entities.values() if e.world_id == wid]
-
-    def simulate(self, world: dict[str, Any], hours: float) -> dict[str, Any]:
-        """Avança tempo e executa a camada autônoma básica dos habitantes."""
-        self.sync_entities_from_world(world)
-        result = self.advance(world, hours)
-        for entity in list(self.entities.values()):
-            if entity.world_id != str(world["id"]) or not entity.alive:
-                continue
-            activity = str(entity.attributes.get("atividade", "repouso"))
-            self.needs.tick(entity, hours, activity)
-            entity.attributes["horas_simuladas"] = float(entity.attributes.get("horas_simuladas", 0)) + hours
-            # Objetivos são deliberadamente avaliados sem teletransporte ou efeitos
-            # mágicos: o agente/LLM pode decidir ações concretas depois.
-            if entity.goals and entity.needs.get("fome", 0) >= 80:
-                entity.attributes["prioridade_atual"] = "alimentar-se"
-            elif entity.goals:
-                entity.attributes["prioridade_atual"] = entity.goals[0].get("nome", entity.goals[0].get("name", "objetivo")) if isinstance(entity.goals[0], dict) else str(entity.goals[0])
-        self.persist_entities_to_world(world)
-        result["entidades_simuladas"] = sum(1 for e in self.entities.values() if e.world_id == str(world["id"]))
-        return result
-
-    def register_event(self, event: Event) -> Event:
-        return self.causal.append(event)
-
-    def advance(self, world: dict[str, Any], hours: float) -> dict[str, Any]:
-        self.validator.validate_world(world)
-        if hours <= 0:
-            raise ValidationError("O avanço temporal deve ser positivo")
-        current = world.setdefault("tempo", {}).get("iso") or now_iso()
-        current_dt = datetime.fromisoformat(current.replace("Z", "+00:00"))
-        target = current_dt + timedelta(hours=hours)
-        world.setdefault("tempo", {})["iso"] = target.isoformat()
-        world["tempo"]["horas_decorridas"] = float(world["tempo"].get("horas_decorridas", 0)) + hours
-        due = self.scheduler.due(target.isoformat())
-        return {"tempo": world["tempo"], "eventos": [asdict(x) for x in due]}
+ def __init__(self,data_dir):
+  self.data_dir=data_dir; self.validator=StateValidator(); self.audit=WorldAudit(); self.causal=CausalLedger(); self.scheduler=EventScheduler(); self.needs=NeedsEngine(); self.economy=EconomyEngine(); self.combat=CombatEngine(); self.population=PopulationEngine(); self.snapshots=SnapshotManager(data_dir); self.autonomy=AutonomyEngine(); self.population_system=PopulationSystem(); self.economy_system=EconomySystem(); self.production=ProductionSystem(); self.diplomacy=DiplomacySystem(); self.climate=ClimateSystem(); self.government=GovernmentSystem(); self.entities={}
+ def register_entity(self,e): self.validator.validate_entity(asdict(e)); self.entities[e.id]=e; return e
+ def sync_entities_from_world(self,w):
+  wid=str(w['id'])
+  for r in w.get('entidades',[]):
+   if not isinstance(r,dict) or not r.get('id') or str(r.get('world_id',wid))!=wid:continue
+   self.entities[str(r['id'])]=Entity(str(r['id']),str(r.get('name') or r.get('nome') or 'Sem nome'),str(r.get('kind') or r.get('tipo') or 'npc'),wid,dict(r.get('attributes') or r.get('atributos') or {}),dict(r.get('needs') or r.get('necessidades') or {}),list(r.get('goals') or r.get('objetivos') or []),dict(r.get('relations') or r.get('relacoes') or {}),list(r.get('memory_ids') or []),bool(r.get('alive',True)))
+ def persist_entities_to_world(self,w): w['entidades']=[asdict(e) for e in self.entities.values() if e.world_id==str(w['id'])]
+ def simulate(self,w,hours):
+  self.sync_entities_from_world(w); result=self.advance(w,hours)
+  for e in list(self.entities.values()):
+   if e.world_id!=str(w['id']) or not e.alive:continue
+   self.needs.tick(e,hours,str(e.attributes.get('atividade','repouso'))); e.attributes['horas_simuladas']=float(e.attributes.get('horas_simuladas',0))+hours; d=self.autonomy.decide(asdict(e)); e.attributes['decisao_atual']=d.action; e.attributes['decisao_motivo']=d.reason
+  self.persist_entities_to_world(w); self._tick_world_systems(w,hours); result['entidades_simuladas']=sum(e.world_id==str(w['id']) for e in self.entities.values()); result['auditoria']=self.audit.validate(w); return result
+ def _tick_world_systems(self,w,hours):
+  self.climate.tick(w.setdefault('clima',{}),hours); self.population_system.tick(w.setdefault('populacao',{}),hours/8760); self.economy_system.tick(w.setdefault('economia',{}),hours/24)
+  if isinstance(w.get('governo'),dict): self.government.budget(w['governo'])
+ def register_event(self,e):return self.causal.append(e)
+ def advance(self,w,hours):
+  self.validator.validate_world(w)
+  if hours<=0:raise ValidationError('O avanço temporal deve ser positivo')
+  current=w.setdefault('tempo',{}).get('iso') or now_iso(); dt=datetime.fromisoformat(current.replace('Z','+00:00')); target=dt+timedelta(hours=hours); w['tempo']['iso']=target.isoformat(); w['tempo']['horas_decorridas']=float(w['tempo'].get('horas_decorridas',0))+hours; due=self.scheduler.due(target.isoformat()); return {'tempo':w['tempo'],'eventos':[asdict(x) for x in due]}
