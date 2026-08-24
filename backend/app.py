@@ -1,10 +1,5 @@
 from __future__ import annotations
 
-# IMPORTANTE: este arquivo também é executado diretamente com
-# `python backend/app.py`. Nesse modo o Python coloca `backend/` no início
-# de sys.path. Como o projeto possui `backend/platform/`, isso sombreia o
-# módulo padrão `platform` da stdlib e quebra imports como uuid -> platform.
-# Normalizamos o caminho ANTES de importar Flask ou qualquer outra biblioteca.
 import os
 import sys
 
@@ -34,6 +29,7 @@ from backend.tools.registry import ToolRegistry
 from backend.tools.builtin import register_builtin
 
 app = Flask(__name__, static_folder=FRONT, static_url_path="/static")
+app.config["MAX_CONTENT_LENGTH"] = int(os.getenv("RPG_MAX_REQUEST_BYTES", str(2 * 1024 * 1024)))
 store = JsonStore(DATA)
 worlds = WorldRepository(store)
 chats = ChatRepository(store, worlds)
@@ -59,6 +55,11 @@ def next_id(existing: list[str]) -> str:
     return f"{max(nums, default=0) + 1:03d}"
 
 
+def body_options(body: dict) -> dict | None:
+    value = body.get("options")
+    return value if isinstance(value, dict) else None
+
+
 @app.get("/")
 def index():
     return send_from_directory(FRONT, "index.html")
@@ -70,7 +71,8 @@ def health():
         import requests
         r = requests.get(f"{llm.url}/api/tags", timeout=3)
         models = r.json().get("models", []) if r.ok else []
-        return jsonify({"ok": r.ok, "ollama": r.ok, "model": llm.model, "models": [m.get("name") for m in models]})
+        status = 200 if r.ok else 503
+        return jsonify({"ok": r.ok, "ollama": r.ok, "model": llm.model, "models": [m.get("name") for m in models]}), status
     except Exception as exc:
         return jsonify({"ok": False, "ollama": False, "model": llm.model, "models": [], "erro": str(exc)}), 503
 
@@ -150,7 +152,10 @@ def search_memory(world_id):
     query = str(request.args.get("q", "")).strip()
     if not query:
         return jsonify({"error": "Informe q."}), 400
-    limit = min(50, max(1, int(request.args.get("limit", 12))))
+    try:
+        limit = min(50, max(1, int(request.args.get("limit", 12))))
+    except ValueError:
+        return jsonify({"error": "limit inválido."}), 400
     return jsonify({"memorias": retriever.search(normalize_id(world_id), query, limit)})
 
 
@@ -178,31 +183,40 @@ def call_tool(name):
         return jsonify({"error": str(exc)}), 400
 
 
+def validate_chat_request(body: dict) -> tuple[str, str, str]:
+    wid, cid = normalize_id(body.get("world_id")), normalize_id(body.get("chat_id"))
+    text = str(body.get("message") or "").strip()
+    if not text:
+        raise ValueError("Mensagem vazia.")
+    if len(text) > int(os.getenv("RPG_MAX_MESSAGE_CHARS", "30000")):
+        raise ValueError("Mensagem excede o limite permitido.")
+    if not worlds.get(wid) or not chats.get(wid, cid):
+        raise LookupError("Mundo ou chat não encontrado.")
+    return wid, cid, text
+
+
 @app.post("/api/chat")
 def chat_api():
     body = request.get_json(silent=True) or {}
     try:
-        wid, cid = normalize_id(body.get("world_id")), normalize_id(body.get("chat_id"))
+        wid, cid, text = validate_chat_request(body)
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
-    text = str(body.get("message") or "").strip()
-    if not text:
-        return jsonify({"error": "Mensagem vazia."}), 400
-    if not worlds.get(wid) or not chats.get(wid, cid):
-        return jsonify({"error": "Mundo ou chat não encontrado."}), 404
+    except LookupError as exc:
+        return jsonify({"error": str(exc)}), 404
+
     chats.append(wid, cid, "user", text)
 
     def stream():
         full: list[str] = []
         try:
-            messages = orchestrator.messages(wid, cid, text)
-            for token in llm.chat(messages, stream=True, options=body.get("options") if isinstance(body.get("options"), dict) else None):
-                full.append(token)
-                yield "data: " + json.dumps({"token": token}, ensure_ascii=False) + "\n\n"
-            answer = "".join(full).strip()
+            # O chat principal usa o mesmo motor de contexto/agent do endpoint avançado.
+            result = RPGAgent(llm, orchestrator, tools, max_iterations=min(10, max(1, int(body.get("max_iterations", 6))))).run(wid, cid, text, body_options(body))
+            answer = result.answer.strip()
             if answer:
                 chats.append(wid, cid, "assistant", answer)
-                memories.add(wid, answer, "resposta", 0.15, ["chat"], "ia")
+                memories.add(wid, answer, "resposta", 0.15, ["chat", "agente"], "ia")
+            yield "data: " + json.dumps({"token": answer, "tool_calls": result.tool_calls, "tool_results": result.tool_results, "iteracoes": result.iterations}, ensure_ascii=False, default=str) + "\n\n"
             yield "data: [DONE]\n\n"
         except LLMError as exc:
             yield "data: " + json.dumps({"error": str(exc)}, ensure_ascii=False) + "\n\n"
@@ -216,16 +230,13 @@ def chat_api():
 def agent_api():
     body = request.get_json(silent=True) or {}
     try:
-        wid, cid = normalize_id(body.get("world_id")), normalize_id(body.get("chat_id"))
+        wid, cid, text = validate_chat_request(body)
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
-    text = str(body.get("message") or "").strip()
-    if not text:
-        return jsonify({"error": "Mensagem vazia."}), 400
-    if not worlds.get(wid) or not chats.get(wid, cid):
-        return jsonify({"error": "Mundo ou chat não encontrado."}), 404
+    except LookupError as exc:
+        return jsonify({"error": str(exc)}), 404
     try:
-        result = RPGAgent(llm, orchestrator, tools, max_iterations=min(10, max(1, int(body.get("max_iterations", 6))))).run(wid, cid, text, body.get("options") if isinstance(body.get("options"), dict) else None)
+        result = RPGAgent(llm, orchestrator, tools, max_iterations=min(10, max(1, int(body.get("max_iterations", 6))))).run(wid, cid, text, body_options(body))
         chats.append(wid, cid, "user", text)
         if result.answer:
             chats.append(wid, cid, "assistant", result.answer)
@@ -240,7 +251,6 @@ def handle_error(exc):
     return jsonify({"error": str(exc)}), 500
 
 
-# Plataforma avançada: runtime determinístico + RAG local + APIs v2.
 from backend.platform.api import install as install_platform
 platform_runtime, notebook_provider = install_platform(app, worlds, memories, store)
 context.rag_provider = lambda world_id, query: notebook_provider(world_id).context(query, 6)
