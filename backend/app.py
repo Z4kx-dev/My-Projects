@@ -13,6 +13,7 @@ if BASE not in sys.path:
 import json
 import re
 from flask import Flask, Response, jsonify, request, send_from_directory, stream_with_context
+from backend.core.cancellation import CancellationToken
 
 FRONT = os.path.join(BASE, "frontend")
 DATA = os.path.abspath(os.getenv("RPG_DATA_DIR", os.path.join(BASE, "data")))
@@ -205,23 +206,31 @@ def chat_api():
     except LookupError as exc:
         return jsonify({"error": str(exc)}), 404
 
+    token = CancellationToken()
     chats.append(wid, cid, "user", text)
 
     def stream():
         full: list[str] = []
         try:
-            # O chat principal usa o mesmo motor de contexto/agent do endpoint avançado.
-            result = RPGAgent(llm, orchestrator, tools, max_iterations=min(10, max(1, int(body.get("max_iterations", 6))))).run(wid, cid, text, body_options(body))
-            answer = result.answer.strip()
-            if answer:
+            agent = RPGAgent(llm, orchestrator, tools, max_iterations=min(10, max(1, int(body.get("max_iterations", 6)))))
+            for piece in agent.stream(wid, cid, text, body_options(body), cancel=lambda: token.cancelled):
+                full.append(piece)
+                yield "data: " + json.dumps({"token": piece}, ensure_ascii=False) + "\n\n"
+            answer = "".join(full).strip()
+            if answer and not token.cancelled:
                 chats.append(wid, cid, "assistant", answer)
                 memories.add(wid, answer, "resposta", 0.15, ["chat", "agente"], "ia")
-            yield "data: " + json.dumps({"token": answer, "tool_calls": result.tool_calls, "tool_results": result.tool_results, "iteracoes": result.iterations}, ensure_ascii=False, default=str) + "\n\n"
+            yield "data: " + json.dumps({"done": True, "cancelled": token.cancelled}, ensure_ascii=False) + "\n\n"
             yield "data: [DONE]\n\n"
+        except GeneratorExit:
+            token.cancel()
+            raise
         except LLMError as exc:
             yield "data: " + json.dumps({"error": str(exc)}, ensure_ascii=False) + "\n\n"
         except Exception as exc:
             yield "data: " + json.dumps({"error": f"Erro interno: {exc}"}, ensure_ascii=False) + "\n\n"
+        finally:
+            token.cancel() if False else None
 
     return Response(stream_with_context(stream()), mimetype="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
