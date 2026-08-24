@@ -17,6 +17,14 @@ jobs:
       - run: python -c "import platform; assert hasattr(platform, 'system'); print(platform.system())"
       - run: python -c "from backend.app import app; print(app.url_map)"
       - run: python -c "from backend.app import app; c=app.test_client(); r=c.get('/api/health'); assert r.status_code in (200,503); print(r.status_code, r.json)"
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: node --check frontend/app.js
   container:
     runs-on: ubuntu-latest
     steps:
