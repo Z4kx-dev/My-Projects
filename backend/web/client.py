@@ -29,10 +29,11 @@ class WebResult:
 
 
 class WebClient:
-    """Cliente web configurável, limitado e com proteção básica contra SSRF."""
+    """Cliente web sem API key obrigatória, com SearXNG local como padrão."""
 
     def __init__(self) -> None:
-        self.provider = os.getenv("RPG_WEB_PROVIDER", "tavily").strip().lower()
+        self.provider = os.getenv("RPG_WEB_PROVIDER", "searxng").strip().lower()
+        self.searxng_url = os.getenv("SEARXNG_URL", "http://127.0.0.1:8080").strip().rstrip("/")
         self.tavily_key = os.getenv("TAVILY_API_KEY", "").strip()
         self.brave_key = os.getenv("BRAVE_SEARCH_API_KEY", "").strip()
         self.timeout = max(3.0, float(os.getenv("RPG_WEB_TIMEOUT_SECONDS", "20")))
@@ -44,12 +45,14 @@ class WebClient:
 
     @property
     def configured(self) -> bool:
-        return bool(self.tavily_key or self.brave_key)
+        return self.provider == "searxng" or bool(self.tavily_key or self.brave_key)
 
     def status(self) -> dict[str, Any]:
         return {
             "enabled": self.configured,
             "provider": self.provider,
+            "searxng": self.provider == "searxng",
+            "searxng_url": self.searxng_url,
             "tavily": bool(self.tavily_key),
             "brave": bool(self.brave_key),
         }
@@ -73,13 +76,18 @@ class WebClient:
         if time_range and str(time_range).lower() not in {"day", "week", "month", "year"}:
             raise WebError("time_range deve ser day, week, month ou year.")
         limit = min(self.max_results, max(1, int(limit or self.max_results)))
+
+        if self.provider == "searxng":
+            return self._searxng_search(q, limit, domain, topic, time_range)
         if self.provider == "brave" and self.brave_key:
             return self._brave_search(q, limit, domain, time_range)
+        if self.provider == "tavily" and self.tavily_key:
+            return self._tavily_search(q, limit, domain, topic, time_range)
         if self.tavily_key:
             return self._tavily_search(q, limit, domain, topic, time_range)
         if self.brave_key:
             return self._brave_search(q, limit, domain, time_range)
-        raise WebError("Busca web não configurada. Defina TAVILY_API_KEY ou BRAVE_SEARCH_API_KEY.")
+        raise WebError("Nenhum provedor web configurado.")
 
     def open(self, url: str, query: str | None = None) -> dict[str, Any]:
         self._validate_public_url(url)
@@ -91,42 +99,48 @@ class WebClient:
                     raise
         return self._direct_open(url)
 
+    def _searxng_search(self, query: str, limit: int, domain: str | None, topic: str, time_range: str | None) -> list[dict[str, Any]]:
+        params: dict[str, Any] = {"q": query, "format": "json", "language": "pt-BR", "safesearch": 1, "categories": "news" if topic == "news" else "general"}
+        if time_range:
+            params["time_range"] = time_range
+        if domain:
+            clean_domain = domain.strip().removeprefix("https://").removeprefix("http://").split("/", 1)[0]
+            if clean_domain:
+                params["q"] = f"site:{clean_domain} {query}"
+        try:
+            r = self.session.get(f"{self.searxng_url}/search", params=params, timeout=self.timeout)
+            r.raise_for_status()
+            data = r.json()
+        except (requests.RequestException, ValueError) as exc:
+            raise WebError(f"Falha na busca SearXNG: {exc}") from exc
+        results: list[dict[str, Any]] = []
+        for item in data.get("results", [])[:limit]:
+            url = str(item.get("url") or "").strip()
+            if not url:
+                continue
+            results.append(WebResult(
+                title=str(item.get("title") or url),
+                url=url,
+                content=str(item.get("content") or "")[: self.max_content_chars],
+                score=float(item["score"]) if item.get("score") is not None else None,
+                source="searxng",
+                published_date=item.get("publishedDate") or item.get("published_date"),
+            ).to_dict())
+        return results
+
     def _tavily_search(self, query: str, limit: int, domain: str | None, topic: str, time_range: str | None) -> list[dict[str, Any]]:
-        payload: dict[str, Any] = {
-            "query": query,
-            "search_depth": os.getenv("TAVILY_SEARCH_DEPTH", "basic"),
-            "max_results": limit,
-            "include_answer": False,
-            "include_raw_content": False,
-            "topic": topic,
-        }
+        payload: dict[str, Any] = {"query": query, "search_depth": os.getenv("TAVILY_SEARCH_DEPTH", "basic"), "max_results": limit, "include_answer": False, "include_raw_content": False, "topic": topic}
         if domain:
             payload["include_domains"] = [domain.strip()]
         if time_range:
             payload["time_range"] = time_range
         try:
-            r = self.session.post(
-                "https://api.tavily.com/search",
-                json=payload,
-                headers={"Authorization": f"Bearer {self.tavily_key}"},
-                timeout=self.timeout,
-            )
+            r = self.session.post("https://api.tavily.com/search", json=payload, headers={"Authorization": f"Bearer {self.tavily_key}"}, timeout=self.timeout)
             r.raise_for_status()
             data = r.json()
         except (requests.RequestException, ValueError) as exc:
             raise WebError(f"Falha na busca Tavily: {exc}") from exc
-        return [
-            WebResult(
-                title=str(x.get("title") or x.get("url") or "Resultado"),
-                url=str(x.get("url") or ""),
-                content=str(x.get("content") or "")[: self.max_content_chars],
-                score=float(x["score"]) if x.get("score") is not None else None,
-                source="tavily",
-                published_date=x.get("published_date"),
-            ).to_dict()
-            for x in data.get("results", [])
-            if x.get("url")
-        ]
+        return [WebResult(title=str(x.get("title") or x.get("url") or "Resultado"), url=str(x.get("url") or ""), content=str(x.get("content") or "")[: self.max_content_chars], score=float(x["score"]) if x.get("score") is not None else None, source="tavily", published_date=x.get("published_date")).to_dict() for x in data.get("results", []) if x.get("url")]
 
     def _tavily_extract(self, url: str, query: str | None) -> dict[str, Any]:
         payload: dict[str, Any] = {"urls": [url], "extract_depth": "basic", "format": "markdown"}
@@ -134,23 +148,13 @@ class WebClient:
             payload["query"] = query
             payload["chunks_per_source"] = 4
         try:
-            r = self.session.post(
-                "https://api.tavily.com/extract",
-                json=payload,
-                headers={"Authorization": f"Bearer {self.tavily_key}"},
-                timeout=self.timeout,
-            )
+            r = self.session.post("https://api.tavily.com/extract", json=payload, headers={"Authorization": f"Bearer {self.tavily_key}"}, timeout=self.timeout)
             r.raise_for_status()
             data = r.json()
         except (requests.RequestException, ValueError) as exc:
             raise WebError(f"Falha na extração Tavily: {exc}") from exc
         result = (data.get("results") or [{}])[0]
-        return {
-            "url": url,
-            "title": self._title_from_url(url),
-            "content": str(result.get("raw_content") or "")[: self.max_content_chars],
-            "source": "tavily",
-        }
+        return {"url": url, "title": self._title_from_url(url), "content": str(result.get("raw_content") or "")[: self.max_content_chars], "source": "tavily"}
 
     def _brave_search(self, query: str, limit: int, domain: str | None, time_range: str | None) -> list[dict[str, Any]]:
         params: dict[str, Any] = {"q": query, "count": limit, "search_lang": "pt-br", "country": "br"}
@@ -159,34 +163,18 @@ class WebClient:
         if time_range:
             params["freshness"] = {"day": "pd", "week": "pw", "month": "pm", "year": "py"}[time_range]
         try:
-            r = self.session.get(
-                "https://api.search.brave.com/res/v1/web/search",
-                params=params,
-                headers={"Accept": "application/json", "X-Subscription-Token": self.brave_key},
-                timeout=self.timeout,
-            )
+            r = self.session.get("https://api.search.brave.com/res/v1/web/search", params=params, headers={"Accept": "application/json", "X-Subscription-Token": self.brave_key}, timeout=self.timeout)
             r.raise_for_status()
             data = r.json()
         except (requests.RequestException, ValueError) as exc:
             raise WebError(f"Falha na busca Brave: {exc}") from exc
-        results = data.get("web", {}).get("results", [])
-        return [
-            WebResult(
-                title=str(x.get("title") or x.get("url") or "Resultado"),
-                url=str(x.get("url") or ""),
-                content=str(x.get("description") or "")[: self.max_content_chars],
-                source="brave",
-            ).to_dict()
-            for x in results
-            if x.get("url")
-        ]
+        return [WebResult(title=str(x.get("title") or x.get("url") or "Resultado"), url=str(x.get("url") or ""), content=str(x.get("description") or "")[: self.max_content_chars], source="brave").to_dict() for x in data.get("web", {}).get("results", []) if x.get("url")]
 
     def _direct_open(self, url: str) -> dict[str, Any]:
         self._validate_public_url(url)
         try:
-            r = self.session.get(url, timeout=self.timeout, allow_redirects=True, stream=True)
+            r = self.session.get(url, timeout=self.timeout, allow_redirects=False, stream=True)
             r.raise_for_status()
-            self._validate_public_url(r.url)
             content_type = r.headers.get("Content-Type", "").lower()
             if "text" not in content_type and "json" not in content_type and "xml" not in content_type:
                 raise WebError("A URL não retornou conteúdo textual compatível.")
@@ -199,6 +187,12 @@ class WebClient:
             r.close()
         except requests.RequestException as exc:
             raise WebError(f"Falha ao abrir URL: {exc}") from exc
+        if 300 <= r.status_code < 400:
+            location = r.headers.get("Location")
+            if not location:
+                raise WebError("A página retornou um redirecionamento sem destino.")
+            from urllib.parse import urljoin
+            return self._direct_open(urljoin(url, location))
         text = raw.decode(r.encoding or "utf-8", errors="replace")
         text = re.sub(r"<script[\s\S]*?</script>|<style[\s\S]*?</style>|<noscript[\s\S]*?</noscript>", " ", text, flags=re.I)
         text = re.sub(r"<[^>]+>", " ", text)
