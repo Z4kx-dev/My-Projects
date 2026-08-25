@@ -16,6 +16,20 @@ server:
   image_proxy: false
   public_instance: false
 
-# Keep the local instance focused on general web search. The default
-# SearXNG engine set remains available and can be tuned later without
-# changing the Korczak AI integration.
+engines:
+  - name: brave
+    engine: brave
+    shortcut: br
+    disabled: false
+  - name: duckduckgo
+    engine: duckduckgo
+    shortcut: ddg
+    disabled: false
+  - name: bing
+    engine: bing
+    shortcut: bi
+    disabled: false
+  - name: google
+    engine: google
+    shortcut: go
+    disabled: false
