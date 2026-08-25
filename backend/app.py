@@ -28,6 +28,7 @@ from backend.ai.orchestrator import RPGOrchestrator
 from backend.ai.agent import RPGAgent
 from backend.tools.registry import ToolRegistry
 from backend.tools.builtin import register_builtin
+from backend.web.client import WebClient, WebError
 
 app = Flask(__name__, static_folder=FRONT, static_url_path="/static")
 app.config["MAX_CONTENT_LENGTH"] = int(os.getenv("RPG_MAX_REQUEST_BYTES", str(2 * 1024 * 1024)))
@@ -38,9 +39,10 @@ memories = MemoryStore(store)
 retriever = HybridRetriever(memories)
 context = ContextBuilder(worlds, chats, memories, max_chars=max(10000, int(os.getenv("RPG_CONTEXT_MAX_CHARS", "120000"))))
 llm = OllamaClient()
+web = WebClient()
 orchestrator = RPGOrchestrator(llm, context)
 tools = ToolRegistry()
-register_builtin(tools, lambda wid: worlds.get(wid) or worlds.ensure(wid), worlds.save, memories)
+register_builtin(tools, lambda wid: worlds.get(wid) or worlds.ensure(wid), worlds.save, memories, web=web)
 
 
 def normalize_id(value: object) -> str:
@@ -73,9 +75,14 @@ def health():
         r = requests.get(f"{llm.url}/api/tags", timeout=3)
         models = r.json().get("models", []) if r.ok else []
         status = 200 if r.ok else 503
-        return jsonify({"ok": r.ok, "ollama": r.ok, "model": llm.model, "models": [m.get("name") for m in models]}), status
+        return jsonify({"ok": r.ok, "ollama": r.ok, "web": web.status(), "model": llm.model, "models": [m.get("name") for m in models]}), status
     except Exception as exc:
-        return jsonify({"ok": False, "ollama": False, "model": llm.model, "models": [], "erro": str(exc)}), 503
+        return jsonify({"ok": False, "ollama": False, "web": web.status(), "model": llm.model, "models": [], "erro": str(exc)}), 503
+
+
+@app.get("/api/web/status")
+def web_status():
+    return jsonify(web.status())
 
 
 @app.get("/api/worlds")
@@ -172,7 +179,7 @@ def create_memory(world_id):
 
 @app.get("/api/tools")
 def list_tools():
-    return jsonify({"ferramentas": tools.definitions()})
+    return jsonify({"ferramentas": tools.definitions(), "web": web.status()})
 
 
 @app.post("/api/tools/<name>")
@@ -180,7 +187,7 @@ def call_tool(name):
     body = request.get_json(silent=True) or {}
     try:
         return jsonify({"resultado": tools.call(name, body)})
-    except (KeyError, ValueError, TypeError) as exc:
+    except (KeyError, ValueError, TypeError, WebError) as exc:
         return jsonify({"error": str(exc)}), 400
 
 
@@ -229,8 +236,6 @@ def chat_api():
             yield "data: " + json.dumps({"error": str(exc)}, ensure_ascii=False) + "\n\n"
         except Exception as exc:
             yield "data: " + json.dumps({"error": f"Erro interno: {exc}"}, ensure_ascii=False) + "\n\n"
-        finally:
-            token.cancel() if False else None
 
     return Response(stream_with_context(stream()), mimetype="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
