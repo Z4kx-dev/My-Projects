@@ -12,13 +12,41 @@ def client(monkeypatch, provider="tavily"):
     return WebClient()
 
 
-def test_web_requires_provider_key(monkeypatch):
+def test_searxng_is_enabled_without_api_key(monkeypatch):
+    monkeypatch.setenv("RPG_WEB_PROVIDER", "searxng")
     monkeypatch.delenv("TAVILY_API_KEY", raising=False)
     monkeypatch.delenv("BRAVE_SEARCH_API_KEY", raising=False)
-    client = WebClient()
-    assert client.status()["enabled"] is False
+    web = WebClient()
+    assert web.status()["enabled"] is True
+    assert web.status()["provider"] == "searxng"
+
+
+def test_searxng_search_is_normalized(monkeypatch):
+    web = client(monkeypatch, "searxng")
+    monkeypatch.delenv("TAVILY_API_KEY", raising=False)
+    response = Mock()
+    response.raise_for_status.return_value = None
+    response.json.return_value = {"results": [{"title": "Exemplo", "url": "https://example.com", "content": "conteúdo", "score": 0.8, "publishedDate": "2026-08-25"}]}
+    with patch.object(web.session, "get", return_value=response):
+        result = web.search("exemplo", 4, topic="news", time_range="week")
+    assert result[0]["title"] == "Exemplo"
+    assert result[0]["url"] == "https://example.com"
+    assert result[0]["score"] == 0.8
+    assert result[0]["source"] == "searxng"
+    params = web.session.get.call_args.kwargs["params"]
+    assert params["format"] == "json"
+    assert params["categories"] == "news"
+    assert params["time_range"] == "week"
+
+
+def test_web_requires_provider_key_when_not_using_searxng(monkeypatch):
+    monkeypatch.setenv("RPG_WEB_PROVIDER", "tavily")
+    monkeypatch.delenv("TAVILY_API_KEY", raising=False)
+    monkeypatch.delenv("BRAVE_SEARCH_API_KEY", raising=False)
+    web = WebClient()
+    assert web.status()["enabled"] is False
     with pytest.raises(WebError):
-        client.search("teste")
+        web.search("teste")
 
 
 def test_tavily_search_is_normalized(monkeypatch):
