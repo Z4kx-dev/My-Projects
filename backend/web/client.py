@@ -6,7 +6,7 @@ import re
 import socket
 from dataclasses import asdict, dataclass
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import requests
 
@@ -29,7 +29,7 @@ class WebResult:
 
 
 class WebClient:
-    """Cliente web sem API key obrigatória, com SearXNG local como padrão."""
+    """Cliente web sem API key obrigatória, usando SearXNG local."""
 
     def __init__(self) -> None:
         self.provider = os.getenv("RPG_WEB_PROVIDER", "searxng").strip().lower()
@@ -40,6 +40,7 @@ class WebClient:
         self.max_results = min(20, max(1, int(os.getenv("RPG_WEB_MAX_RESULTS", "8"))))
         self.max_content_chars = min(50000, max(1000, int(os.getenv("RPG_WEB_MAX_CONTENT_CHARS", "12000"))))
         self.max_response_bytes = min(10_000_000, max(100_000, int(os.getenv("RPG_WEB_MAX_RESPONSE_BYTES", "3000000"))))
+        self.max_redirects = min(5, max(0, int(os.getenv("RPG_WEB_MAX_REDIRECTS", "3"))))
         self.session = requests.Session()
         self.session.headers.update({"User-Agent": os.getenv("RPG_WEB_USER_AGENT", "KorczakAI/1.0")})
 
@@ -48,18 +49,8 @@ class WebClient:
         return self.provider == "searxng" or bool(self.tavily_key or self.brave_key)
 
     def status(self) -> dict[str, Any]:
-        data = {
-            "enabled": self.configured,
-            "provider": self.provider,
-            "searxng": self.provider == "searxng",
-            "searxng_url": self.searxng_url,
-            "tavily": bool(self.tavily_key),
-            "brave": bool(self.brave_key),
-        }
-        if self.provider == "searxng":
-            data["available"] = self._searxng_available()
-        else:
-            data["available"] = self.configured
+        data = {"enabled": self.configured, "provider": self.provider, "searxng": self.provider == "searxng", "searxng_url": self.searxng_url, "tavily": bool(self.tavily_key), "brave": bool(self.brave_key)}
+        data["available"] = self._searxng_available() if self.provider == "searxng" else self.configured
         return data
 
     def _searxng_available(self) -> bool:
@@ -118,11 +109,19 @@ class WebClient:
         except (requests.RequestException, ValueError) as exc:
             raise WebError(f"Falha na busca SearXNG: {exc}") from exc
         results: list[dict[str, Any]] = []
-        for item in data.get("results", [])[:limit]:
+        seen: set[str] = set()
+        for item in data.get("results", []):
             url = str(item.get("url") or "").strip()
-            if not url:
+            if not url or url in seen:
                 continue
+            try:
+                self._validate_public_url(url)
+            except WebError:
+                continue
+            seen.add(url)
             results.append(WebResult(title=str(item.get("title") or url), url=url, content=str(item.get("content") or "")[: self.max_content_chars], score=float(item["score"]) if item.get("score") is not None else None, source="searxng", published_date=item.get("publishedDate") or item.get("published_date")).to_dict())
+            if len(results) >= limit:
+                break
         return results
 
     def _tavily_search(self, query: str, limit: int, domain: str | None, topic: str, time_range: str | None) -> list[dict[str, Any]]:
@@ -167,7 +166,7 @@ class WebClient:
             raise WebError(f"Falha na busca Brave: {exc}") from exc
         return [WebResult(title=str(x.get("title") or x.get("url") or "Resultado"), url=str(x.get("url") or ""), content=str(x.get("description") or "")[: self.max_content_chars], source="brave").to_dict() for x in data.get("web", {}).get("results", []) if x.get("url")]
 
-    def _direct_open(self, url: str) -> dict[str, Any]:
+    def _direct_open(self, url: str, redirects: int = 0) -> dict[str, Any]:
         self._validate_public_url(url)
         try:
             r = self.session.get(url, timeout=self.timeout, allow_redirects=False, stream=True)
@@ -177,8 +176,11 @@ class WebClient:
                 r.close()
                 if not location:
                     raise WebError("A página retornou um redirecionamento sem destino.")
-                from urllib.parse import urljoin
-                return self._direct_open(urljoin(url, location))
+                if redirects >= self.max_redirects:
+                    raise WebError("Número máximo de redirecionamentos excedido.")
+                target = urljoin(url, location)
+                self._validate_public_url(target)
+                return self._direct_open(target, redirects + 1)
             content_type = r.headers.get("Content-Type", "").lower()
             if "text" not in content_type and "json" not in content_type and "xml" not in content_type:
                 r.close()
@@ -190,14 +192,17 @@ class WebClient:
                     if len(raw) > self.max_response_bytes:
                         r.close()
                         raise WebError("A resposta web excede o limite de tamanho permitido.")
+            final_url = r.url
+            encoding = r.encoding
             r.close()
         except requests.RequestException as exc:
             raise WebError(f"Falha ao abrir URL: {exc}") from exc
-        text = raw.decode(r.encoding or "utf-8", errors="replace")
+        self._validate_public_url(final_url)
+        text = raw.decode(encoding or "utf-8", errors="replace")
         text = re.sub(r"<script[\s\S]*?</script>|<style[\s\S]*?</style>|<noscript[\s\S]*?</noscript>", " ", text, flags=re.I)
         text = re.sub(r"<[^>]+>", " ", text)
         text = re.sub(r"\s+", " ", text).strip()
-        return {"url": r.url, "title": self._title_from_url(r.url), "content": text[: self.max_content_chars], "source": "direct"}
+        return {"url": final_url, "title": self._title_from_url(final_url), "content": text[: self.max_content_chars], "source": "direct"}
 
     @staticmethod
     def _validate_public_url(url: str) -> None:
