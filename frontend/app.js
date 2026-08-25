@@ -1,30 +1,701 @@
-(()=>{'use strict';
-const $=id=>document.getElementById(id),E={form:$('chat-form'),input:$('message'),messages:$('messages'),chat:$('chat'),send:$('send-button'),stop:$('stop-button'),tree:$('chat-tree'),newChat:$('new-chat'),refresh:$('tree-refresh'),toggle:$('sidebar-toggle'),sidebar:$('sidebar'),overlay:$('sidebar-overlay'),title:$('current-chat-name'),worldPanel:$('world-panel'),real:$('real-worlds'),fantasy:$('fantasia-worlds'),memory:$('memory-panel'),memoryTree:$('memory-tree'),sources:$('sources-panel'),sourceList:$('source-list'),sourceFile:$('source-file'),attach:$('attach-button'),attachFile:$('attach-file'),settings:$('settings-panel'),toasts:$('toast-container'),loading:$('loading'),selector:$('model-selector'),sound:$('sound-toggle'),enter:$('enter-send'),hint:$('composer-hint')};
-const S={worlds:[],worldId:localStorage.getItem('rpg.worldId'),chatId:localStorage.getItem('rpg.chatId'),generating:false,controller:null};
-const ID=v=>{v=String(v??'').trim();return/^\d+$/.test(v)?v.padStart(3,'0'):v};
-const ESC=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const api=async(url,opt={})=>{const r=await fetch(url,{...opt,headers:{...(opt.body&&!(opt.body instanceof FormData)?{'Content-Type':'application/json'}:{}),...(opt.headers||{})}});const t=await r.text();let d=null;try{d=t?JSON.parse(t):null}catch{}if(!r.ok)throw Error(d?.error||t||`HTTP ${r.status}`);return d};
-const toast=m=>{const n=document.createElement('div');n.className='toast';n.textContent=m;E.toasts.appendChild(n);setTimeout(()=>n.remove(),3500)};
-const save=()=>{localStorage.setItem('rpg.worldId',S.worldId||'');localStorage.setItem('rpg.chatId',S.chatId||'')};
-const world=id=>S.worlds.find(w=>ID(w.id)===ID(id)); const chat=(w,id)=>(w?.chats||[]).find(c=>ID(c.id)===ID(id));
-function md(t){let s=ESC(t),blocks=[];s=s.replace(/```(?:\w+)?\n?([\s\S]*?)```/g,(_,c)=>{const k=`§${blocks.length}§`;blocks.push(`<pre><code>${c.trim()}</code></pre>`);return k});s=s.replace(/`([^`\n]+)`/g,'<code>$1</code>').replace(/^### (.+)$/gm,'<h3>$1</h3>').replace(/^## (.+)$/gm,'<h2>$1</h2>').replace(/^# (.+)$/gm,'<h1>$1</h1>').replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/^[-*] (.+)$/gm,'<li>$1</li>').replace(/\n{2,}/g,'</p><p>').replace(/\n/g,'<br>');s=s.replace(/(<li>.*<\/li>)(?:<br>)?/g,'<ul>$1</ul>');s=`<p>${s}</p>`.replace(/<p>(<(?:h[1-3]|ul|pre))/g,'$1').replace(/(<\/(?:h[1-3]|ul|pre)>)<\/p>/g,'$1');blocks.forEach((x,i)=>s=s.replace(`§${i}§`,x));return s}
-function clear(){E.messages.replaceChildren()} function scroll(){requestAnimationFrame(()=>E.chat.scrollTop=E.chat.scrollHeight)}
-function add(role,text=''){const a=document.createElement('article');a.className=`message ${role}`;const c=document.createElement('div');c.className='message-content';c.innerHTML=role==='assistant'?md(text):ESC(text).replace(/\n/g,'<br>');a.appendChild(c);if(role==='assistant'){const b=document.createElement('button');b.className='message-action';b.type='button';b.title='Copiar';b.textContent='⧉';b.onclick=()=>navigator.clipboard?.writeText(text).then(()=>toast('Copiado.')).catch(()=>toast('Não foi possível copiar.'));a.appendChild(b)}E.messages.appendChild(a);scroll();return c}
-function welcome(){clear();const n=document.createElement('div');n.className='welcome';n.innerHTML='<div class="welcome-logo">✦</div><h1>O que vamos simular?</h1><p>Selecione um mundo e comece uma nova conversa.</p>';E.messages.appendChild(n)}
-function renderTree(){E.tree.replaceChildren();[['real','🌎','Mundo Real'],['fantasia','✨','Mundo Fantasia']].forEach(([kind,icon,label])=>{const sec=document.createElement('section');sec.className='tree-category';const h=document.createElement('button');h.className='tree-category-head';h.type='button';h.innerHTML=`<span>▾</span><span>${icon}</span><span>${label}</span>`;h.onclick=()=>{sec.classList.toggle('collapsed');h.firstElementChild.textContent=sec.classList.contains('collapsed')?'▸':'▾'};sec.appendChild(h);const list=document.createElement('div');list.className='tree-items';S.worlds.filter(w=>(String(w.tipo).toLowerCase()==='fantasia'? 'fantasia':'real')===kind).forEach(w=>{const box=document.createElement('div');const b=document.createElement('button');b.className='tree-world-head';b.type='button';b.innerHTML=`<span>▾</span><span class="world-id">${ESC(ID(w.id))}</span><span>${ESC(w.nome||'Mundo')}</span>`;b.onclick=()=>selectWorld(w.id);box.appendChild(b);(w.chats||[]).forEach(c=>{const x=document.createElement('button');x.className=`tree-chat ${ID(w.id)===S.worldId&&ID(c.id)===S.chatId?'active':''}`;x.type='button';x.innerHTML=`<span>•</span><span>${ESC(c.nome||'Chat')}</span>`;x.onclick=()=>selectChat(w.id,c.id);box.appendChild(x)});list.appendChild(box)});sec.appendChild(list);E.tree.appendChild(sec)})}
-function renderWorldLists(){const put=(el,arr)=>{el.replaceChildren();arr.forEach(w=>{const b=document.createElement('button');b.className='world-card';b.type='button';b.innerHTML=`<span>${ESC(ID(w.id))}</span><span>${ESC(w.nome)}</span><span>›</span>`;b.onclick=()=>{E.worldPanel.hidden=true;selectWorld(w.id)};el.appendChild(b)})};put(E.real,S.worlds.filter(w=>String(w.tipo).toLowerCase()!=='fantasia'));put(E.fantasy,S.worlds.filter(w=>String(w.tipo).toLowerCase()==='fantasia'))}
-async function loadWorlds(){try{const d=await api('/api/worlds');S.worlds=(d.mundos||[]).map(w=>({...w,id:ID(w.id)}));if(!world(S.worldId))S.worldId=S.worlds[0]?.id||null;if(S.worldId&&!chat(world(S.worldId),S.chatId))S.chatId=world(S.worldId)?.chats?.[0]?.id||null;save();renderTree();renderWorldLists();const w=world(S.worldId),c=chat(w,S.chatId);E.title.textContent=c?.nome||w?.nome||'RPG Simulator';if(S.worldId&&S.chatId)await loadChat(S.worldId,S.chatId);else welcome()}catch(e){toast(e.message);welcome()}}
-async function loadChat(w,c){try{E.loading.hidden=false;const d=await api(`/api/worlds/${ID(w)}/chats/${ID(c)}`);clear();(d.mensagens||[]).forEach(m=>add(m.role==='user'?'user':'assistant',m.content));if(!(d.mensagens||[]).length)welcome()}catch(e){toast(e.message);welcome()}finally{E.loading.hidden=true}}
-async function selectWorld(id){const w=world(id);if(!w)return;S.worldId=ID(id);S.chatId=w.chats?.[0]?.id||null;save();closeSide();await loadWorlds()}
-async function selectChat(w,c){S.worldId=ID(w);S.chatId=ID(c);save();closeSide();await loadChat(S.worldId,S.chatId)}
-async function createChat(){if(!S.worldId)return toast('Selecione um mundo.');try{const d=await api(`/api/worlds/${S.worldId}/chats`,{method:'POST',body:JSON.stringify({nome:'Nova conversa'})});S.chatId=ID(d.chat.id);save();await loadWorlds()}catch(e){toast(e.message)}}
-async function createWorld(){const nome=prompt('Nome do mundo:');if(!nome?.trim())return;const tipo=(prompt('Tipo: real ou fantasia','real')||'real').toLowerCase();try{const d=await api('/api/worlds',{method:'POST',body:JSON.stringify({nome:nome.trim(),tipo})});S.worldId=ID(d.mundo.id);S.chatId=null;save();await loadWorlds();E.worldPanel.hidden=true;await createChat()}catch(e){toast(e.message)}}
-async function send(text){if(S.generating)return;if(!S.worldId)return toast('Selecione um mundo.');if(!S.chatId)await createChat();if(!S.chatId)return;S.generating=true;resize();E.stop.hidden=false;add('user',text);const out=add('assistant','');S.controller=new AbortController();try{const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json','Accept':'text/event-stream'},body:JSON.stringify({world_id:S.worldId,chat_id:S.chatId,message:text,stream:true}),signal:S.controller.signal});if(!r.ok)throw Error((await r.text())||`HTTP ${r.status}`);const reader=r.body.getReader(),dec=new TextDecoder();let buf='',full='';while(true){const {value,done}=await reader.read();if(done)break;buf+=dec.decode(value,{stream:true});const lines=buf.split('\n');buf=lines.pop()||'';for(const line of lines){if(!line.startsWith('data:'))continue;const raw=line.slice(5).trim();if(!raw||raw==='[DONE]')continue;const j=JSON.parse(raw);if(j.error)throw Error(j.error);full+=j.token||'';out.innerHTML=md(full);scroll()}}await loadWorlds();if(E.sound.checked)beep()}catch(e){if(e.name==='AbortError'){out.innerHTML='<p>Geração interrompida.</p>'}else{out.innerHTML=`<p>Erro: ${ESC(e.message)}</p>`;toast(e.message)}}finally{S.generating=false;S.controller=null;E.stop.hidden=true;E.hint.textContent=E.enter.checked?'Enter para enviar':'Use o botão enviar';resize()}}
-function beep(){try{const C=window.AudioContext||window.webkitAudioContext;if(!C)return;const c=new C(),o=c.createOscillator(),g=c.createGain();o.frequency.value=660;g.gain.value=.035;o.connect(g);g.connect(c.destination);o.start();o.stop(c.currentTime+.08)}catch{}}
-async function loadMemory(){if(!S.worldId)return;try{const d=await api(`/api/worlds/${S.worldId}/memory`);E.memoryTree.innerHTML=(d.memorias||[]).map(m=>`<div class="memory-item"><b>${ESC(m.tipo)}</b><p>${ESC(m.conteudo)}</p><small>Importância ${(Number(m.importancia)*100).toFixed(0)}%</small></div>`).join('')||'<div class="empty-box">Nenhuma memória persistida.</div>'}catch(e){toast(e.message)}}
-async function loadSources(){if(!S.worldId)return;try{const d=await api(`/api/v2/worlds/${S.worldId}/rag/sources`);const items=d.fontes||[];E.sourceList.innerHTML=items.map(x=>`<div class="memory-item"><b>${ESC(x.nome)}</b><p>${ESC(x.mime_type)}</p><small>${ESC(x.id)}</small></div>`).join('')||'<div class="empty-box">Nenhuma fonte carregada neste mundo.</div>'}catch(e){toast(e.message)}}
-async function uploadSource(file){if(!S.worldId)return toast('Selecione um mundo.');if(!file)return toast('Escolha um arquivo.');const fd=new FormData();fd.append('file',file);try{await api(`/api/v2/worlds/${S.worldId}/rag/upload`,{method:'POST',body:fd});if(E.sourceFile)E.sourceFile.value='';if(E.attachFile)E.attachFile.value='';await loadSources();toast('Fonte adicionada ao notebook do mundo.')}catch(e){toast(e.message)}}
-function resize(){E.input.style.height='auto';E.input.style.height=Math.min(200,Math.max(24,E.input.scrollHeight))+'px';E.send.disabled=!E.input.value.trim()||S.generating}
-function closeSide(){E.sidebar.classList.remove('open');E.overlay.hidden=true} function openSide(){E.sidebar.classList.add('open');E.overlay.hidden=false}
-E.form.onsubmit=e=>{e.preventDefault();const t=E.input.value.trim();if(t){E.input.value='';resize();send(t)}};E.input.oninput=resize;E.input.onkeydown=e=>{if(e.key==='Escape'&&S.generating)S.controller?.abort();if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing&&E.enter.checked){e.preventDefault();E.form.requestSubmit()}};E.newChat.onclick=createChat;E.refresh.onclick=loadWorlds;E.toggle?.addEventListener('click',openSide);$('brand-button')?.addEventListener('click',()=>E.worldPanel.hidden=false);$('sidebar-close')?.addEventListener('click',closeSide);E.overlay.onclick=closeSide;E.selector.onclick=()=>E.worldPanel.hidden=false;$('memory-button')?.addEventListener('click',()=>{E.memory.hidden=false;loadMemory()});$('sources-button')?.addEventListener('click',()=>{E.sources.hidden=false;loadSources()});$('upload-source')?.addEventListener('click',()=>uploadSource(E.sourceFile?.files?.[0]));E.attach?.addEventListener('click',()=>E.attachFile?.click());E.attachFile?.addEventListener('change',()=>{const f=E.attachFile.files?.[0];if(f)uploadSource(f)});$('settings-button')?.addEventListener('click',()=>E.settings.hidden=false);$('profile-button')?.addEventListener('click',()=>E.settings.hidden=false);$('close-world-panel')?.addEventListener('click',()=>E.worldPanel.hidden=true);$('close-memory-panel')?.addEventListener('click',()=>E.memory.hidden=true);$('close-sources-panel')?.addEventListener('click',()=>E.sources.hidden=true);$('close-settings-panel')?.addEventListener('click',()=>E.settings.hidden=true);$('create-world-button')?.addEventListener('click',createWorld);$('share-button')?.addEventListener('click',async()=>{try{await navigator.clipboard.writeText(location.href);toast('Link copiado.')}catch{toast('Não foi possível copiar o link.')}});$('clear-local')?.addEventListener('click',()=>{localStorage.clear();location.reload()});E.enter?.addEventListener('change',e=>{localStorage.setItem('rpg.enterSend',e.target.checked?'1':'0');E.hint.textContent=e.target.checked?'Enter para enviar':'Use o botão enviar'});E.sound?.addEventListener('change',e=>localStorage.setItem('rpg.sound',e.target.checked?'1':'0'));E.stop?.addEventListener('click',()=>S.controller?.abort());document.querySelectorAll('.backdrop').forEach(b=>b.onclick=()=>$(b.dataset.close).hidden=true);$('chat-search')?.addEventListener('input',e=>{const q=e.target.value.toLowerCase();document.querySelectorAll('.tree-chat,.tree-world-head').forEach(x=>x.style.display=!q||x.textContent.toLowerCase().includes(q)?'':'none')});document.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();E.input.focus()}if(e.key==='Escape'){document.querySelectorAll('.modal-layer:not([hidden])').forEach(x=>x.hidden=true);if(S.generating)S.controller?.abort()}});E.enter.checked=localStorage.getItem('rpg.enterSend')!=='0';E.sound.checked=localStorage.getItem('rpg.sound')==='1';E.hint.textContent=E.enter.checked?'Enter para enviar':'Use o botão enviar';resize();loadWorlds();
+(() => {
+  "use strict";
+  const $ = (id) => document.getElementById(id),
+    E = {
+      form: $("chat-form"),
+      input: $("message"),
+      messages: $("messages"),
+      chat: $("chat"),
+      send: $("send-button"),
+      stop: $("stop-button"),
+      tree: $("chat-tree"),
+      newChat: $("new-chat"),
+      refresh: $("tree-refresh"),
+      toggle: $("sidebar-toggle"),
+      sidebar: $("sidebar"),
+      overlay: $("sidebar-overlay"),
+      title: $("current-chat-name"),
+      worldPanel: $("world-panel"),
+      real: $("real-worlds"),
+      fantasy: $("fantasia-worlds"),
+      memory: $("memory-panel"),
+      memoryTree: $("memory-tree"),
+      sources: $("sources-panel"),
+      sourceList: $("source-list"),
+      sourceFile: $("source-file"),
+      attach: $("attach-button"),
+      attachFile: $("attach-file"),
+      settings: $("settings-panel"),
+      toasts: $("toast-container"),
+      loading: $("loading"),
+      selector: $("model-selector"),
+      sound: $("sound-toggle"),
+      enter: $("enter-send"),
+      hint: $("composer-hint"),
+    };
+  const S = {
+    worlds: [],
+    worldId: localStorage.getItem("rpg.worldId"),
+    chatId: localStorage.getItem("rpg.chatId"),
+    generating: false,
+    controller: null,
+  };
+  const ID = (v) => {
+    v = String(v ?? "").trim();
+    return /^\d+$/.test(v) ? v.padStart(3, "0") : v;
+  };
+  const ESC = (v) =>
+    String(v ?? "").replace(
+      /[&<>"']/g,
+      (c) =>
+        ({
+          "&": "&amp;",
+          "<": "&lt;",
+          ">": "&gt;",
+          '"': "&quot;",
+          "'": "&#39;",
+        })[c],
+    );
+  const api = async (url, opt = {}) => {
+    const r = await fetch(url, {
+      ...opt,
+      headers: {
+        ...(opt.body && !(opt.body instanceof FormData)
+          ? { "Content-Type": "application/json" }
+          : {}),
+        ...(opt.headers || {}),
+      },
+    });
+    const t = await r.text();
+    let d = null;
+    try {
+      d = t ? JSON.parse(t) : null;
+    } catch {}
+    if (!r.ok) throw Error(d?.error || t || `HTTP ${r.status}`);
+    return d;
+  };
+  const toast = (m) => {
+    const n = document.createElement("div");
+    n.className = "toast";
+    n.textContent = m;
+    E.toasts.appendChild(n);
+    setTimeout(() => n.remove(), 3500);
+  };
+  const modal = (id) => $(id);
+  const openModal = (id) => {
+    const target = modal(id);
+    if (target) target.hidden = false;
+  };
+  const closeModal = (id) => {
+    const target = modal(id);
+    if (target) target.hidden = true;
+  };
+  const closeModals = () =>
+    document
+      .querySelectorAll(".modal-layer:not([hidden])")
+      .forEach((target) => {
+        target.hidden = true;
+      });
+  const save = () => {
+    localStorage.setItem("rpg.worldId", S.worldId || "");
+    localStorage.setItem("rpg.chatId", S.chatId || "");
+  };
+  const world = (id) => S.worlds.find((w) => ID(w.id) === ID(id));
+  const chat = (w, id) => (w?.chats || []).find((c) => ID(c.id) === ID(id));
+  function md(t) {
+    let s = ESC(t),
+      blocks = [];
+    s = s.replace(/```(?:\w+)?\n?([\s\S]*?)```/g, (_, c) => {
+      const k = `§${blocks.length}§`;
+      blocks.push(`<pre><code>${c.trim()}</code></pre>`);
+      return k;
+    });
+    s = s
+      .replace(/`([^`\n]+)`/g, "<code>$1</code>")
+      .replace(/^### (.+)$/gm, "<h3>$1</h3>")
+      .replace(/^## (.+)$/gm, "<h2>$1</h2>")
+      .replace(/^# (.+)$/gm, "<h1>$1</h1>")
+      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+      .replace(/^[-*] (.+)$/gm, "<li>$1</li>")
+      .replace(/\n{2,}/g, "</p><p>")
+      .replace(/\n/g, "<br>");
+    s = s.replace(/(<li>.*<\/li>)(?:<br>)?/g, "<ul>$1</ul>");
+    s = `<p>${s}</p>`
+      .replace(/<p>(<(?:h[1-3]|ul|pre))/g, "$1")
+      .replace(/(<\/(?:h[1-3]|ul|pre)>)<\/p>/g, "$1");
+    blocks.forEach((x, i) => (s = s.replace(`§${i}§`, x)));
+    return s;
+  }
+  function clear() {
+    E.messages.replaceChildren();
+  }
+  function scroll() {
+    requestAnimationFrame(() => (E.chat.scrollTop = E.chat.scrollHeight));
+  }
+  function add(role, text = "") {
+    const a = document.createElement("article");
+    a.className = `message ${role}`;
+    const c = document.createElement("div");
+    c.className = "message-content";
+    c.innerHTML =
+      role === "assistant" ? md(text) : ESC(text).replace(/\n/g, "<br>");
+    a.appendChild(c);
+    if (role === "assistant") {
+      const b = document.createElement("button");
+      b.className = "message-action";
+      b.type = "button";
+      b.title = "Copiar";
+      b.textContent = "⧉";
+      b.onclick = () =>
+        navigator.clipboard
+          ?.writeText(text)
+          .then(() => toast("Copiado."))
+          .catch(() => toast("Não foi possível copiar."));
+      a.appendChild(b);
+    }
+    E.messages.appendChild(a);
+    scroll();
+    return c;
+  }
+  function welcome() {
+    clear();
+    const n = document.createElement("div");
+    n.className = "welcome";
+    n.innerHTML =
+      '<div class="welcome-logo">✦</div><h1>O que vamos simular?</h1><p>Selecione um mundo e comece uma nova conversa.</p>';
+    E.messages.appendChild(n);
+  }
+  function renderTree() {
+    E.tree.replaceChildren();
+    [
+      ["real", "🌎", "Mundo Real"],
+      ["fantasia", "✨", "Mundo Fantasia"],
+    ].forEach(([kind, icon, label]) => {
+      const sec = document.createElement("section");
+      sec.className = "tree-category";
+      const h = document.createElement("button");
+      h.className = "tree-category-head";
+      h.type = "button";
+      h.innerHTML = `<span>▾</span><span>${icon}</span><span>${label}</span>`;
+      h.onclick = () => {
+        sec.classList.toggle("collapsed");
+        h.firstElementChild.textContent = sec.classList.contains("collapsed")
+          ? "▸"
+          : "▾";
+      };
+      sec.appendChild(h);
+      const list = document.createElement("div");
+      list.className = "tree-items";
+      S.worlds
+        .filter(
+          (w) =>
+            (String(w.tipo).toLowerCase() === "fantasia"
+              ? "fantasia"
+              : "real") === kind,
+        )
+        .forEach((w) => {
+          const box = document.createElement("div");
+          const b = document.createElement("button");
+          b.className = "tree-world-head";
+          b.type = "button";
+          b.innerHTML = `<span>▾</span><span class="world-id">${ESC(ID(w.id))}</span><span>${ESC(w.nome || "Mundo")}</span>`;
+          b.onclick = () => selectWorld(w.id);
+          bindContextMenu(b, "world", w.id, null, w.nome || "Mundo");
+          box.appendChild(b);
+          (w.chats || []).forEach((c) => {
+            const x = document.createElement("button");
+            x.className = `tree-chat ${ID(w.id) === S.worldId && ID(c.id) === S.chatId ? "active" : ""}`;
+            x.type = "button";
+            x.innerHTML = `<span>•</span><span>${ESC(c.nome || "Chat")}</span>`;
+            x.onclick = () => selectChat(w.id, c.id);
+            bindContextMenu(x, "chat", w.id, c.id, c.nome || "Chat");
+            box.appendChild(x);
+          });
+          list.appendChild(box);
+        });
+      sec.appendChild(list);
+      E.tree.appendChild(sec);
+    });
+  }
+  function renderWorldLists() {
+    const put = (el, arr) => {
+      el.replaceChildren();
+      arr.forEach((w) => {
+        const b = document.createElement("button");
+        b.className = "world-card";
+        b.type = "button";
+        b.innerHTML = `<span>${ESC(ID(w.id))}</span><span>${ESC(w.nome)}</span><span>›</span>`;
+        b.onclick = () => {
+          E.worldPanel.hidden = true;
+          selectWorld(w.id);
+        };
+        bindContextMenu(b, "world", w.id, null, w.nome || "Mundo");
+        el.appendChild(b);
+      });
+    };
+    put(
+      E.real,
+      S.worlds.filter((w) => String(w.tipo).toLowerCase() !== "fantasia"),
+    );
+    put(
+      E.fantasy,
+      S.worlds.filter((w) => String(w.tipo).toLowerCase() === "fantasia"),
+    );
+  }
+  async function loadWorlds() {
+    try {
+      const d = await api("/api/worlds");
+      S.worlds = (d.mundos || []).map((w) => ({ ...w, id: ID(w.id) }));
+      if (!world(S.worldId)) S.worldId = S.worlds[0]?.id || null;
+      if (S.worldId && !chat(world(S.worldId), S.chatId))
+        S.chatId = world(S.worldId)?.chats?.[0]?.id || null;
+      save();
+      renderTree();
+      renderWorldLists();
+      const w = world(S.worldId),
+        c = chat(w, S.chatId);
+      E.title.textContent = c?.nome || w?.nome || "Korczak AI";
+      if (S.worldId && S.chatId) await loadChat(S.worldId, S.chatId);
+      else welcome();
+    } catch (e) {
+      toast(e.message);
+      welcome();
+    }
+  }
+  async function loadChat(w, c) {
+    try {
+      E.loading.hidden = false;
+      const d = await api(`/api/worlds/${ID(w)}/chats/${ID(c)}`);
+      clear();
+      (d.mensagens || []).forEach((m) =>
+        add(m.role === "user" ? "user" : "assistant", m.content),
+      );
+      if (!(d.mensagens || []).length) welcome();
+    } catch (e) {
+      toast(e.message);
+      welcome();
+    } finally {
+      E.loading.hidden = true;
+    }
+  }
+  async function selectWorld(id) {
+    const w = world(id);
+    if (!w) return;
+    S.worldId = ID(id);
+    S.chatId = w.chats?.[0]?.id || null;
+    save();
+    closeSide();
+    await loadWorlds();
+  }
+  async function selectChat(w, c) {
+    S.worldId = ID(w);
+    S.chatId = ID(c);
+    save();
+    closeSide();
+    await loadChat(S.worldId, S.chatId);
+  }
+  function closeContextMenu() {
+    document.querySelectorAll(".context-menu").forEach((menu) => menu.remove());
+  }
+  function openContextMenu(event, type, worldId, chatId, currentName) {
+    event.preventDefault();
+    closeContextMenu();
+    const menu = document.createElement("div");
+    menu.className = "context-menu";
+    menu.innerHTML = `<strong>${type === "world" ? "Mundo" : "Chat"}: ${ESC(currentName)}</strong><button type="button" data-action="rename">Renomear</button><button type="button" data-action="delete">Excluir</button>`;
+    document.body.appendChild(menu);
+    menu.style.left = `${Math.max(8, Math.min(event.clientX, window.innerWidth - menu.offsetWidth - 8))}px`;
+    menu.style.top = `${Math.max(8, Math.min(event.clientY, window.innerHeight - menu.offsetHeight - 8))}px`;
+    menu.querySelector('[data-action="rename"]').onclick = async () => {
+      const nome = prompt(
+        `Novo nome do ${type === "world" ? "mundo" : "chat"}:`,
+        currentName,
+      );
+      if (!nome?.trim() || nome.trim() === currentName)
+        return closeContextMenu();
+      try {
+        const url =
+          type === "world"
+            ? `/api/worlds/${ID(worldId)}`
+            : `/api/worlds/${ID(worldId)}/chats/${ID(chatId)}`;
+        await api(url, {
+          method: "PATCH",
+          body: JSON.stringify({ nome: nome.trim() }),
+        });
+        closeContextMenu();
+        await loadWorlds();
+      } catch (error) {
+        toast(error.message);
+      }
+    };
+    menu.querySelector('[data-action="delete"]').onclick = async () => {
+      if (
+        !confirm(
+          `Excluir este ${type === "world" ? "mundo e todos os seus chats" : "chat"}?`,
+        )
+      )
+        return closeContextMenu();
+      try {
+        const url =
+          type === "world"
+            ? `/api/worlds/${ID(worldId)}`
+            : `/api/worlds/${ID(worldId)}/chats/${ID(chatId)}`;
+        await api(url, { method: "DELETE" });
+        closeContextMenu();
+        await loadWorlds();
+      } catch (error) {
+        toast(error.message);
+      }
+    };
+  }
+  function bindContextMenu(element, type, worldId, chatId, currentName) {
+    element.addEventListener("contextmenu", (event) =>
+      openContextMenu(event, type, worldId, chatId, currentName),
+    );
+  }
+  async function createChat() {
+    if (!S.worldId) return toast("Selecione um mundo.");
+    try {
+      const d = await api(`/api/worlds/${S.worldId}/chats`, {
+        method: "POST",
+        body: JSON.stringify({ nome: "Nova conversa" }),
+      });
+      S.chatId = ID(d.chat.id);
+      save();
+      await loadWorlds();
+    } catch (e) {
+      toast(e.message);
+    }
+  }
+  async function createWorld() {
+    const nome = prompt("Nome do mundo:");
+    if (!nome?.trim()) return;
+    const tipo = (
+      prompt("Tipo: real ou fantasia", "real") || "real"
+    ).toLowerCase();
+    try {
+      const d = await api("/api/worlds", {
+        method: "POST",
+        body: JSON.stringify({ nome: nome.trim(), tipo }),
+      });
+      S.worldId = ID(d.mundo.id);
+      S.chatId = null;
+      save();
+      await loadWorlds();
+      E.worldPanel.hidden = true;
+      await createChat();
+    } catch (e) {
+      toast(e.message);
+    }
+  }
+  async function send(text) {
+    if (S.generating) return;
+    if (!S.worldId) return toast("Selecione um mundo.");
+    if (!S.chatId) await createChat();
+    if (!S.chatId) return;
+    S.generating = true;
+    resize();
+    E.stop.hidden = false;
+    add("user", text);
+    const out = add("assistant", "");
+    S.controller = new AbortController();
+    try {
+      const r = await fetch("/api/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "text/event-stream",
+        },
+        body: JSON.stringify({
+          world_id: S.worldId,
+          chat_id: S.chatId,
+          message: text,
+          stream: true,
+        }),
+        signal: S.controller.signal,
+      });
+      if (!r.ok) throw Error((await r.text()) || `HTTP ${r.status}`);
+      const reader = r.body.getReader(),
+        dec = new TextDecoder();
+      let buf = "",
+        full = "";
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const lines = buf.split("\n");
+        buf = lines.pop() || "";
+        for (const line of lines) {
+          if (!line.startsWith("data:")) continue;
+          const raw = line.slice(5).trim();
+          if (!raw || raw === "[DONE]") continue;
+          const j = JSON.parse(raw);
+          if (j.error) throw Error(j.error);
+          full += j.token || "";
+          out.innerHTML = md(full);
+          scroll();
+        }
+      }
+      await loadWorlds();
+      if (E.sound.checked) beep();
+    } catch (e) {
+      if (e.name === "AbortError") {
+        out.innerHTML = "<p>Geração interrompida.</p>";
+      } else {
+        out.innerHTML = `<p>Erro: ${ESC(e.message)}</p>`;
+        toast(e.message);
+      }
+    } finally {
+      S.generating = false;
+      S.controller = null;
+      E.stop.hidden = true;
+      E.hint.textContent = E.enter.checked
+        ? "Enter para enviar"
+        : "Use o botão enviar";
+      resize();
+    }
+  }
+  function beep() {
+    try {
+      const C = window.AudioContext || window.webkitAudioContext;
+      if (!C) return;
+      const c = new C(),
+        o = c.createOscillator(),
+        g = c.createGain();
+      o.frequency.value = 660;
+      g.gain.value = 0.035;
+      o.connect(g);
+      g.connect(c.destination);
+      o.start();
+      o.stop(c.currentTime + 0.08);
+    } catch {}
+  }
+  async function loadMemory() {
+    if (!S.worldId) return;
+    try {
+      const d = await api(`/api/worlds/${S.worldId}/memory`);
+      E.memoryTree.innerHTML =
+        (d.memorias || [])
+          .map(
+            (m) =>
+              `<div class="memory-item"><b>${ESC(m.tipo)}</b><p>${ESC(m.conteudo)}</p><small>Importância ${(Number(m.importancia) * 100).toFixed(0)}%</small></div>`,
+          )
+          .join("") ||
+        '<div class="empty-box">Nenhuma memória persistida.</div>';
+    } catch (e) {
+      toast(e.message);
+    }
+  }
+  async function loadSources() {
+    if (!S.worldId) return;
+    try {
+      const d = await api(`/api/v2/worlds/${S.worldId}/rag/sources`);
+      const items = d.fontes || [];
+      E.sourceList.innerHTML =
+        items
+          .map(
+            (x) =>
+              `<div class="memory-item"><b>${ESC(x.nome)}</b><p>${ESC(x.mime_type)}</p><small>${ESC(x.id)}</small></div>`,
+          )
+          .join("") ||
+        '<div class="empty-box">Nenhuma fonte carregada neste mundo.</div>';
+    } catch (e) {
+      toast(e.message);
+    }
+  }
+  async function uploadSource(file) {
+    if (!S.worldId) return toast("Selecione um mundo.");
+    if (!file) return toast("Escolha um arquivo.");
+    const fd = new FormData();
+    fd.append("file", file);
+    try {
+      await api(`/api/v2/worlds/${S.worldId}/rag/upload`, {
+        method: "POST",
+        body: fd,
+      });
+      if (E.sourceFile) E.sourceFile.value = "";
+      if (E.attachFile) E.attachFile.value = "";
+      await loadSources();
+      toast("Fonte adicionada ao notebook do mundo.");
+    } catch (e) {
+      toast(e.message);
+    }
+  }
+  function resize() {
+    E.input.style.height = "auto";
+    E.input.style.height =
+      Math.min(200, Math.max(24, E.input.scrollHeight)) + "px";
+    E.send.disabled = !E.input.value.trim() || S.generating;
+  }
+  function closeSide() {
+    E.sidebar.classList.remove("open");
+    E.overlay.hidden = true;
+  }
+  function openSide() {
+    E.sidebar.classList.add("open");
+    E.overlay.hidden = false;
+  }
+  const THEMES = {
+    night: { label: "Noite", className: "theme-night" },
+    aurora: { label: "Aurora", className: "theme-aurora" },
+    rafa: { label: "Garrafinha", className: "theme-rafa" },
+  };
+  function setupThemes() {
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = "/static/themes.css?v=20260825-1";
+    document.head.appendChild(link);
+    const settings = document.querySelector(".settings"),
+      enter = $("enter-send");
+    if (!settings || !enter) return;
+    const label = document.createElement("label"),
+      select = document.createElement("select");
+    label.innerHTML = "<span>Tema</span>";
+    select.id = "theme-select";
+    select.setAttribute("aria-label", "Tema");
+    Object.entries(THEMES).forEach(([id, theme]) => {
+      const option = document.createElement("option");
+      option.value = id;
+      option.textContent = theme.label;
+      select.appendChild(option);
+    });
+    label.appendChild(select);
+    settings.insertBefore(label, enter.parentElement);
+    const applyTheme = (id) => {
+      const theme = THEMES[id] || THEMES.night;
+      document.body.classList.remove(
+        ...Object.values(THEMES).map((item) => item.className),
+      );
+      document.body.classList.add(theme.className);
+      select.value = THEMES[id] ? id : "night";
+      localStorage.setItem("rpg.theme", THEMES[id] ? id : "night");
+    };
+    select.addEventListener("change", () => applyTheme(select.value));
+    applyTheme(localStorage.getItem("rpg.theme") || "night");
+  }
+  function bindModalControls() {
+    setupThemes();
+    document
+      .querySelectorAll(".modal-layer .backdrop")
+      .forEach((backdrop) =>
+        backdrop.addEventListener("click", () =>
+          closeModal(backdrop.dataset.close),
+        ),
+      );
+    document
+      .querySelectorAll('[id^="close-"][id$="-panel"]')
+      .forEach((button) =>
+        button.addEventListener("click", () =>
+          closeModal(button.id.replace("close-", "")),
+        ),
+      );
+    document
+      .querySelectorAll(".group-head")
+      .forEach((button) =>
+        button.addEventListener("click", () =>
+          button.parentElement.classList.toggle("collapsed"),
+        ),
+      );
+  }
+  E.form.onsubmit = function (e) {
+    e.preventDefault();
+    const t = E.input.value.trim();
+    if (t) {
+      E.input.value = "";
+      resize();
+      send(t);
+    }
+  };
+  E.input.oninput = resize;
+  E.input.onkeydown = (e) => {
+    if (e.key === "Escape" && S.generating) S.controller?.abort();
+    if (e.key === "Enter" && !e.shiftKey && !e.isComposing && E.enter.checked) {
+      e.preventDefault();
+      E.form.requestSubmit();
+    }
+  };
+  E.newChat.onclick = createChat;
+  E.refresh.onclick = loadWorlds;
+  E.toggle?.addEventListener("click", openSide);
+  $("brand-button")?.addEventListener("click", () => openModal("world-panel"));
+  $("sidebar-close")?.addEventListener("click", closeSide);
+  E.overlay.onclick = closeSide;
+  E.selector.onclick = () => openModal("world-panel");
+  $("memory-button")?.addEventListener("click", () => {
+    openModal("memory-panel");
+    loadMemory();
+  });
+  $("sources-button")?.addEventListener("click", () => {
+    openModal("sources-panel");
+    loadSources();
+  });
+  $("upload-source")?.addEventListener("click", () =>
+    uploadSource(E.sourceFile?.files?.[0]),
+  );
+  E.attach?.addEventListener("click", () => E.attachFile?.click());
+  E.attachFile?.addEventListener("change", () => {
+    const f = E.attachFile.files?.[0];
+    if (f) uploadSource(f);
+  });
+  $("settings-button")?.addEventListener("click", () =>
+    openModal("settings-panel"),
+  );
+  $("profile-button")?.addEventListener("click", () =>
+    openModal("settings-panel"),
+  );
+  $("create-world-button")?.addEventListener("click", createWorld);
+  $("share-button")?.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(location.href);
+      toast("Link copiado.");
+    } catch {
+      toast("Não foi possível copiar o link.");
+    }
+  });
+  $("clear-local")?.addEventListener("click", () => {
+    localStorage.clear();
+    location.reload();
+  });
+  E.enter?.addEventListener("change", (e) => {
+    localStorage.setItem("rpg.enterSend", e.target.checked ? "1" : "0");
+    E.hint.textContent = e.target.checked
+      ? "Enter para enviar"
+      : "Use o botão enviar";
+  });
+  E.sound?.addEventListener("change", (e) =>
+    localStorage.setItem("rpg.sound", e.target.checked ? "1" : "0"),
+  );
+  E.stop?.addEventListener("click", () => S.controller?.abort());
+  $("chat-search")?.addEventListener("input", (e) => {
+    const q = e.target.value.toLowerCase();
+    document
+      .querySelectorAll(".tree-chat,.tree-world-head")
+      .forEach(
+        (x) =>
+          (x.style.display =
+            !q || x.textContent.toLowerCase().includes(q) ? "" : "none"),
+      );
+  });
+  document.addEventListener("keydown", (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+      e.preventDefault();
+      E.input.focus();
+    }
+    if (e.key === "Escape") {
+      closeContextMenu();
+      closeModals();
+      if (S.generating) S.controller?.abort();
+    }
+  });
+  document.addEventListener("click", (e) => {
+    if (!e.target.closest(".context-menu")) closeContextMenu();
+  });
+  E.enter.checked = localStorage.getItem("rpg.enterSend") !== "0";
+  E.sound.checked = localStorage.getItem("rpg.sound") === "1";
+  E.hint.textContent = E.enter.checked
+    ? "Enter para enviar"
+    : "Use o botão enviar";
+  bindModalControls();
+  resize();
+  loadWorlds();
 })();
