@@ -48,7 +48,7 @@ class WebClient:
         return self.provider == "searxng" or bool(self.tavily_key or self.brave_key)
 
     def status(self) -> dict[str, Any]:
-        return {
+        data = {
             "enabled": self.configured,
             "provider": self.provider,
             "searxng": self.provider == "searxng",
@@ -56,15 +56,20 @@ class WebClient:
             "tavily": bool(self.tavily_key),
             "brave": bool(self.brave_key),
         }
+        if self.provider == "searxng":
+            data["available"] = self._searxng_available()
+        else:
+            data["available"] = self.configured
+        return data
 
-    def search(
-        self,
-        query: str,
-        limit: int | None = None,
-        domain: str | None = None,
-        topic: str = "general",
-        time_range: str | None = None,
-    ) -> list[dict[str, Any]]:
+    def _searxng_available(self) -> bool:
+        try:
+            response = self.session.get(f"{self.searxng_url}/healthz", timeout=min(3.0, self.timeout))
+            return response.ok
+        except requests.RequestException:
+            return False
+
+    def search(self, query: str, limit: int | None = None, domain: str | None = None, topic: str = "general", time_range: str | None = None) -> list[dict[str, Any]]:
         q = str(query or "").strip()
         if not q:
             raise WebError("A consulta web não pode ser vazia.")
@@ -76,7 +81,6 @@ class WebClient:
         if time_range and str(time_range).lower() not in {"day", "week", "month", "year"}:
             raise WebError("time_range deve ser day, week, month ou year.")
         limit = min(self.max_results, max(1, int(limit or self.max_results)))
-
         if self.provider == "searxng":
             return self._searxng_search(q, limit, domain, topic, time_range)
         if self.provider == "brave" and self.brave_key:
@@ -118,14 +122,7 @@ class WebClient:
             url = str(item.get("url") or "").strip()
             if not url:
                 continue
-            results.append(WebResult(
-                title=str(item.get("title") or url),
-                url=url,
-                content=str(item.get("content") or "")[: self.max_content_chars],
-                score=float(item["score"]) if item.get("score") is not None else None,
-                source="searxng",
-                published_date=item.get("publishedDate") or item.get("published_date"),
-            ).to_dict())
+            results.append(WebResult(title=str(item.get("title") or url), url=url, content=str(item.get("content") or "")[: self.max_content_chars], score=float(item["score"]) if item.get("score") is not None else None, source="searxng", published_date=item.get("publishedDate") or item.get("published_date")).to_dict())
         return results
 
     def _tavily_search(self, query: str, limit: int, domain: str | None, topic: str, time_range: str | None) -> list[dict[str, Any]]:
@@ -175,24 +172,27 @@ class WebClient:
         try:
             r = self.session.get(url, timeout=self.timeout, allow_redirects=False, stream=True)
             r.raise_for_status()
+            if 300 <= r.status_code < 400:
+                location = r.headers.get("Location")
+                r.close()
+                if not location:
+                    raise WebError("A página retornou um redirecionamento sem destino.")
+                from urllib.parse import urljoin
+                return self._direct_open(urljoin(url, location))
             content_type = r.headers.get("Content-Type", "").lower()
             if "text" not in content_type and "json" not in content_type and "xml" not in content_type:
+                r.close()
                 raise WebError("A URL não retornou conteúdo textual compatível.")
             raw = bytearray()
             for chunk in r.iter_content(chunk_size=65536):
                 if chunk:
                     raw.extend(chunk)
                     if len(raw) > self.max_response_bytes:
+                        r.close()
                         raise WebError("A resposta web excede o limite de tamanho permitido.")
             r.close()
         except requests.RequestException as exc:
             raise WebError(f"Falha ao abrir URL: {exc}") from exc
-        if 300 <= r.status_code < 400:
-            location = r.headers.get("Location")
-            if not location:
-                raise WebError("A página retornou um redirecionamento sem destino.")
-            from urllib.parse import urljoin
-            return self._direct_open(urljoin(url, location))
         text = raw.decode(r.encoding or "utf-8", errors="replace")
         text = re.sub(r"<script[\s\S]*?</script>|<style[\s\S]*?</style>|<noscript[\s\S]*?</noscript>", " ", text, flags=re.I)
         text = re.sub(r"<[^>]+>", " ", text)
