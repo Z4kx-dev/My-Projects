@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import re
 from dataclasses import dataclass, field
 from typing import Any, Callable, Iterator
 
@@ -20,7 +19,7 @@ class AgentResult:
 
 
 class RPGAgent:
-    """Agente com ciclo controlado e sem enviar definições de tools em perguntas comuns."""
+    """Agente com ciclo controlado e execução direta para pedidos explícitos de web."""
 
     def __init__(self, llm: OllamaClient, orchestrator: RPGOrchestrator, tools: ToolRegistry, max_iterations: int = 6):
         self.llm = llm
@@ -30,23 +29,44 @@ class RPGAgent:
         self.max_iterations = max(1, max_iterations)
 
     @staticmethod
+    def _needs_web(text: str) -> bool:
+        t = str(text or "").casefold()
+        terms = (
+            "pesquise", "pesquisa", "pesquisar", "busque", "buscar", "procure",
+            "na internet", "na web", "internet", "web", "notícia", "noticias",
+            "preço", "precos", "cotação", "cotacao", "hoje", "atualmente", "agora",
+            "mais recente", "últimas notícias", "fontes", "fonte",
+        )
+        return any(term in t for term in terms)
+
+    @staticmethod
     def _needs_tools(text: str) -> bool:
-        """Heurística barata: perguntas conversacionais não precisam carregar o schema das tools."""
-        t = text.casefold()
-        web_terms = ("pesquise", "pesquisa", "busque", "buscar", "procure", "na internet", "na web", "notícia", "noticias", "preço", "precos", "cotação", "cotacao", "hoje", "atualmente", "agora")
+        t = str(text or "").casefold()
+        web_terms = ("pesquise", "pesquisa", "pesquisar", "busque", "buscar", "procure", "na internet", "na web", "internet", "web", "notícia", "noticias", "preço", "precos", "cotação", "cotacao", "hoje", "atualmente", "agora")
         action_terms = ("crie", "criar", "delete", "apague", "remova", "altere", "mude", "salve", "atualize", "execute", "construa", "compre", "venda", "ataque", "ande", "viaje", "treine", "use a ferramenta")
         return any(term in t for term in web_terms + action_terms)
+
+    def _direct_web(self, messages: list[dict[str, Any]], query: str, calls: list[dict[str, Any]], results: list[dict[str, Any]], options: dict[str, Any] | None, cancel: Callable[[], bool] | None) -> str:
+        if cancel and cancel():
+            raise RuntimeError("Execução cancelada pelo usuário.")
+        tool = self.tools.get("buscar_na_web")
+        arguments = {"query": query, "limit": 8}
+        self.policy.check(Decision("buscar_na_web", arguments, "pedido explícito de pesquisa na internet"))
+        value = tool.handler(**arguments)
+        result = {"ok": True, "resultado": value}
+        calls.append({"tool": "buscar_na_web", "arguments": arguments})
+        results.append({"tool": "buscar_na_web", "result": result})
+        # URLs e snippets são dados externos; o modelo apenas os resume/cita.
+        messages.append({"role": "tool", "content": json.dumps(result, ensure_ascii=False, default=str)})
+        raw = self.llm.chat(messages, stream=False, options=options, cancel=cancel)
+        if isinstance(raw, dict):
+            return str((raw.get("message") or {}).get("content") or "")
+        return str(raw)
 
     def _tool_round(self, messages: list[dict[str, Any]], calls: list, results: list, options: dict[str, Any] | None, cancel: Callable[[], bool] | None, use_tools: bool) -> tuple[str, bool, dict[str, Any]]:
         if cancel and cancel():
             raise RuntimeError("Execução cancelada pelo usuário.")
-        raw = self.llm.chat(
-            messages,
-            stream=False,
-            options=options,
-            tools=self.tools.definitions() if use_tools else None,
-            cancel=cancel,
-        )
+        raw = self.llm.chat(messages, stream=False, options=options, tools=self.tools.definitions() if use_tools else None, cancel=cancel)
         if not isinstance(raw, dict):
             return str(raw), False, {}
         message = raw.get("message") or {}
@@ -86,6 +106,9 @@ class RPGAgent:
         messages = self.orchestrator.messages(world_id, chat_id, user_text)
         calls: list[dict[str, Any]] = []
         results: list[dict[str, Any]] = []
+        if self._needs_web(user_text):
+            answer = self._direct_web(messages, user_text, calls, results, options, cancel)
+            return AgentResult(answer, calls, results, 1)
         use_tools = self._needs_tools(user_text)
         for iteration in range(1, self.max_iterations + 1):
             content, has_tools, _ = self._tool_round(messages, calls, results, options, cancel, use_tools)
@@ -98,8 +121,13 @@ class RPGAgent:
         messages = self.orchestrator.messages(world_id, chat_id, user_text)
         calls: list[dict[str, Any]] = []
         results: list[dict[str, Any]] = []
+        if self._needs_web(user_text):
+            answer = self._direct_web(messages, user_text, calls, results, options, cancel)
+            if answer:
+                yield answer
+            return
         use_tools = self._needs_tools(user_text)
-        for iteration in range(1, self.max_iterations + 1):
+        for _iteration in range(1, self.max_iterations + 1):
             content, has_tools, _ = self._tool_round(messages, calls, results, options, cancel, use_tools)
             if not has_tools:
                 if content:
