@@ -1,5 +1,6 @@
 use_default_settings: true
 
+# Configuração mínima e estável para a instância local da Korczak AI.
 general:
   debug: false
   instance_name: "Korczak AI Search"
@@ -11,25 +12,24 @@ search:
     - json
 
 server:
+  # O valor real deve ser injetado pelo ambiente/Compose.
   secret_key: "change-me-via-SEARXNG_SECRET"
   limiter: false
   image_proxy: false
   public_instance: false
 
+# Começamos com engines gratuitos e leves. O SearXNG consulta mais de um
+# mecanismo; falhas individuais são tratadas pelo próprio SearXNG.
 engines:
-  - name: brave
-    engine: brave
-    shortcut: br
-    disabled: false
   - name: duckduckgo
     engine: duckduckgo
     shortcut: ddg
     disabled: false
+  - name: brave
+    engine: brave
+    shortcut: br
+    disabled: false
   - name: bing
     engine: bing
     shortcut: bi
-    disabled: false
-  - name: google
-    engine: google
-    shortcut: go
     disabled: false
