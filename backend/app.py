@@ -37,7 +37,7 @@ worlds = WorldRepository(store)
 chats = ChatRepository(store, worlds)
 memories = MemoryStore(store)
 retriever = HybridRetriever(memories)
-context = ContextBuilder(worlds, chats, memories, max_chars=max(10000, int(os.getenv("RPG_CONTEXT_MAX_CHARS", "120000"))))
+context = ContextBuilder(worlds, chats, memories, max_chars=max(10000, int(os.getenv("RPG_CONTEXT_MAX_CHARS", "24000"))))
 llm = OllamaClient()
 web = WebClient()
 orchestrator = RPGOrchestrator(llm, context)
@@ -61,6 +61,14 @@ def next_id(existing: list[str]) -> str:
 def body_options(body: dict) -> dict | None:
     value = body.get("options")
     return value if isinstance(value, dict) else None
+
+
+def agent_iterations(body: dict) -> int:
+    try:
+        requested = int(body.get("max_iterations", 2))
+    except (TypeError, ValueError):
+        requested = 2
+    return min(6, max(1, requested))
 
 
 @app.get("/")
@@ -219,7 +227,7 @@ def chat_api():
     def stream():
         full: list[str] = []
         try:
-            agent = RPGAgent(llm, orchestrator, tools, max_iterations=min(10, max(1, int(body.get("max_iterations", 6)))))
+            agent = RPGAgent(llm, orchestrator, tools, max_iterations=agent_iterations(body))
             for piece in agent.stream(wid, cid, text, body_options(body), cancel=lambda: token.cancelled):
                 full.append(piece)
                 yield "data: " + json.dumps({"token": piece}, ensure_ascii=False) + "\n\n"
@@ -250,7 +258,7 @@ def agent_api():
     except LookupError as exc:
         return jsonify({"error": str(exc)}), 404
     try:
-        result = RPGAgent(llm, orchestrator, tools, max_iterations=min(10, max(1, int(body.get("max_iterations", 6))))).run(wid, cid, text, body_options(body))
+        result = RPGAgent(llm, orchestrator, tools, max_iterations=agent_iterations(body)).run(wid, cid, text, body_options(body))
         chats.append(wid, cid, "user", text)
         if result.answer:
             chats.append(wid, cid, "assistant", result.answer)
@@ -267,7 +275,16 @@ def handle_error(exc):
 
 from backend.platform.api import install as install_platform
 platform_runtime, notebook_provider = install_platform(app, worlds, memories, store)
-context.rag_provider = lambda world_id, query: notebook_provider(world_id).context(query, 6)
+
+
+def notebook_context(world_id: str, query: str):
+    nb = notebook_provider(world_id)
+    if not nb.documents:
+        return "", []
+    return nb.context(query, 4, max_chars=5000)
+
+
+context.rag_provider = notebook_context
 
 
 if __name__ == "__main__":
