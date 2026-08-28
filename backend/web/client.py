@@ -29,14 +29,14 @@ class WebResult:
 
 
 class WebClient:
-    """Cliente web sem API key obrigatória, usando SearXNG local."""
+    """Cliente web usando SearXNG local, com timeout e fallback explícitos."""
 
     def __init__(self) -> None:
         self.provider = os.getenv("RPG_WEB_PROVIDER", "searxng").strip().lower()
         self.searxng_url = os.getenv("SEARXNG_URL", "http://127.0.0.1:8080").strip().rstrip("/")
         self.tavily_key = os.getenv("TAVILY_API_KEY", "").strip()
         self.brave_key = os.getenv("BRAVE_SEARCH_API_KEY", "").strip()
-        self.timeout = max(3.0, float(os.getenv("RPG_WEB_TIMEOUT_SECONDS", "20")))
+        self.timeout = max(3.0, float(os.getenv("RPG_WEB_TIMEOUT_SECONDS", "12")))
         self.max_results = min(20, max(1, int(os.getenv("RPG_WEB_MAX_RESULTS", "8"))))
         self.max_content_chars = min(50000, max(1000, int(os.getenv("RPG_WEB_MAX_CONTENT_CHARS", "12000"))))
         self.max_response_bytes = min(10_000_000, max(100_000, int(os.getenv("RPG_WEB_MAX_RESPONSE_BYTES", "3000000"))))
@@ -73,7 +73,15 @@ class WebClient:
             raise WebError("time_range deve ser day, week, month ou year.")
         limit = min(self.max_results, max(1, int(limit or self.max_results)))
         if self.provider == "searxng":
-            return self._searxng_search(q, limit, domain, topic, time_range)
+            try:
+                return self._searxng_search(q, limit, domain, topic, time_range)
+            except WebError:
+                # Fallback só quando uma chave externa estiver explicitamente configurada.
+                if self.brave_key:
+                    return self._brave_search(q, limit, domain, time_range)
+                if self.tavily_key:
+                    return self._tavily_search(q, limit, domain, topic, time_range)
+                raise
         if self.provider == "brave" and self.brave_key:
             return self._brave_search(q, limit, domain, time_range)
         if self.provider == "tavily" and self.tavily_key:
