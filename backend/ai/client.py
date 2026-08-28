@@ -14,7 +14,7 @@ class LLMError(RuntimeError):
 class OllamaClient:
     def __init__(self, url: str | None = None, model: str | None = None):
         self.url = (url or os.getenv("OLLAMA_URL", "http://127.0.0.1:11434")).rstrip("/")
-        self.model = model or os.getenv("OLLAMA_MODEL", "llama3.1")
+        self.model = model or os.getenv("OLLAMA_MODEL", "llama3.2")
         self.timeout = float(os.getenv("OLLAMA_TIMEOUT_SECONDS", "900"))
 
     def chat(self, messages: list[dict[str, Any]], stream: bool = False, options: dict[str, Any] | None = None, tools: list[dict[str, Any]] | None = None, cancel: Callable[[], bool] | None = None) -> Iterator[str] | str | dict[str, Any]:
