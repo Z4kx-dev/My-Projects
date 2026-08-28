@@ -14,9 +14,12 @@ class LLMError(RuntimeError):
 class OllamaClient:
     def __init__(self, url: str | None = None, model: str | None = None):
         self.url = (url or os.getenv("OLLAMA_URL", "http://127.0.0.1:11434")).rstrip("/")
-        self.model = model or os.getenv("OLLAMA_MODEL", "llama3.2")
-        self.timeout = max(5.0, float(os.getenv("OLLAMA_TIMEOUT_SECONDS", "55")))
-        self.num_predict = max(32, int(os.getenv("OLLAMA_NUM_PREDICT", "256")))
+        self.model = model or os.getenv("OLLAMA_MODEL", "llama3.2:latest")
+        # 55s era curto demais para o primeiro carregamento do modelo no Codespaces.
+        # O Ollama pode gastar vários segundos carregando o GGUF antes de gerar tokens.
+        self.timeout = max(10.0, float(os.getenv("OLLAMA_TIMEOUT_SECONDS", "120")))
+        self.num_predict = max(32, int(os.getenv("OLLAMA_NUM_PREDICT", "128")))
+        self.keep_alive = os.getenv("OLLAMA_KEEP_ALIVE", "10m")
 
     def chat(
         self,
@@ -26,11 +29,13 @@ class OllamaClient:
         tools: list[dict[str, Any]] | None = None,
         cancel: Callable[[], bool] | None = None,
     ) -> Iterator[str] | str | dict[str, Any]:
-        payload: dict[str, Any] = {"model": self.model, "messages": messages, "stream": stream}
+        payload: dict[str, Any] = {
+            "model": self.model,
+            "messages": messages,
+            "stream": stream,
+            "keep_alive": self.keep_alive,
+        }
         effective_options = dict(options or {})
-        # Sem limite explícito, uma geração do llama3.2 pode consumir todo o
-        # timeout do proxy (especialmente no agente com ferramentas). Mantemos
-        # um limite seguro, mas permitimos que o chamador o substitua.
         effective_options.setdefault("num_predict", self.num_predict)
         if effective_options:
             payload["options"] = effective_options
