@@ -28,12 +28,12 @@ class RPGAgent:
         self.policy = ToolPolicy()
         self.max_iterations = max(1, max_iterations)
 
-    def _tool_round(self, messages: list[dict[str, Any]], calls: list, results: list, options: dict[str, Any] | None, cancel: Callable[[], bool] | None) -> tuple[str, bool]:
+    def _tool_round(self, messages: list[dict[str, Any]], calls: list, results: list, options: dict[str, Any] | None, cancel: Callable[[], bool] | None) -> tuple[str, bool, dict[str, Any]]:
         if cancel and cancel():
             raise RuntimeError("Execução cancelada pelo usuário.")
         raw = self.llm.chat(messages, stream=False, options=options, tools=self.tools.definitions(), cancel=cancel)
         if not isinstance(raw, dict):
-            return str(raw), False
+            return str(raw), False, {}
         message = raw.get("message") or {}
         tool_calls = message.get("tool_calls") or []
         content = str(message.get("content") or "")
@@ -65,35 +65,30 @@ class RPGAgent:
             calls.append({"tool": name, "arguments": dict(arguments)})
             results.append({"tool": name, "result": result})
             messages.append({"role": "tool", "content": json.dumps(result, ensure_ascii=False, default=str)})
-        return content, bool(tool_calls)
+        return content, bool(tool_calls), message
 
     def run(self, world_id: str, chat_id: str, user_text: str, options: dict[str, Any] | None = None, cancel: Callable[[], bool] | None = None) -> AgentResult:
         messages = self.orchestrator.messages(world_id, chat_id, user_text)
         calls: list[dict[str, Any]] = []
         results: list[dict[str, Any]] = []
         for iteration in range(1, self.max_iterations + 1):
-            content, has_tools = self._tool_round(messages, calls, results, options, cancel)
+            content, has_tools, _ = self._tool_round(messages, calls, results, options, cancel)
             if not has_tools:
                 return AgentResult(content, calls, results, iteration)
         return AgentResult("O agente atingiu o limite de iterações sem concluir a ação.", calls, results, self.max_iterations)
 
     def stream(self, world_id: str, chat_id: str, user_text: str, options: dict[str, Any] | None = None, cancel: Callable[[], bool] | None = None) -> Iterator[str]:
-        """Executa tools em modo controlado e transmite a resposta final token a token."""
+        """Executa tools e transmite a resposta sem regenerar respostas que já foram geradas."""
         messages = self.orchestrator.messages(world_id, chat_id, user_text)
         calls: list[dict[str, Any]] = []
         results: list[dict[str, Any]] = []
         for iteration in range(1, self.max_iterations + 1):
-            content, has_tools = self._tool_round(messages, calls, results, options, cancel)
+            content, has_tools, _ = self._tool_round(messages, calls, results, options, cancel)
             if not has_tools:
-                # Reenvia o histórico final ao provedor em stream para o frontend receber tokens.
-                stream_messages = list(messages)
-                stream = self.llm.chat(stream_messages, stream=True, options=options, cancel=cancel)
-                if not hasattr(stream, "__iter__"):
-                    yield str(content)
-                    return
-                for token in stream:
-                    if cancel and cancel():
-                        raise RuntimeError("Execução cancelada pelo usuário.")
-                    yield str(token)
+                # A chamada acima já gerou a resposta completa. Regenerar aqui causava
+                # uma segunda inferência desnecessária e podia contribuir para 504.
+                if content:
+                    yield content
                 return
+            # Após tools, a próxima iteração gera a resposta usando os resultados.
         yield "O agente atingiu o limite de iterações sem concluir a ação."
