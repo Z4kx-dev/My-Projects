@@ -538,7 +538,7 @@
   const THEMES = {
     night: { label: "Noite", className: "theme-night" },
     aurora: { label: "Aurora", className: "theme-aurora" },
-    rafa: { label: "Garrafinha", className: "theme-rafa" },
+    rf: { label: "Lil Bottle", className: "theme-rf" },
   };
   function setupThemes() {
     const link = document.createElement("link");

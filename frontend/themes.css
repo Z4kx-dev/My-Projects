@@ -1,6 +1,6 @@
 /* Temas: adicione uma entrada em THEMES, no app.js, para criar novas opções. */
 :root,
-body.theme-rafa {
+body.theme-rf {
   --page-bg: #212121;
   --main-bg: #001c3c;
   --sidebar-bg: #001c3c;
@@ -16,6 +16,20 @@ body.theme-rafa {
 body.theme-night {
   --page-bg: #212121;
   --main-bg: #212121;
+  --sidebar-bg: #171717;
+  --surface: #2f2f2f;
+  --surface-hover: #343434;
+  --text: #ececec;
+  --muted: #999;
+  --accent: #8ab4f8;
+  --pattern-opacity: 0.055;
+  color-scheme: dark;
+}
+
+body.theme-night {
+  --message-color: #7400cc;
+  --page-bg: #212121;
+  --main-bg: #2d2d2e;
   --sidebar-bg: #171717;
   --surface: #2f2f2f;
   --surface-hover: #343434;
@@ -69,7 +83,7 @@ body,
   z-index: 0;
   pointer-events: none;
   content: "";
-  background: url("/static/assets/CHAT-IMAGE-BACKGROUND.png") repeat;
+  background: url("/static/assets/CHAT-BACKGROUND-IMAGE.png") repeat;
   background-size: 500px px;
   opacity: var(--pattern-opacity);
 }
@@ -80,7 +94,8 @@ body,
 
 .topbar,
 .composer-wrap {
-  background-color: transparent;
+  background-color: #101cc7;
+  background-image: linear-gradient(180deg, trasnparent 0%, var(--main-bg 20%));
 }
 
 .composer-wrap {

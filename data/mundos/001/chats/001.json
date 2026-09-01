@@ -1,0 +1,15 @@
+{
+  "id": "001",
+  "world_id": "001",
+  "nome": "Nova conversa",
+  "criado_em": "2026-09-01T02:42:26.892237+00:00",
+  "atualizado_em": "2026-09-01T02:42:27.682011+00:00",
+  "mensagens": [
+    {
+      "role": "user",
+      "content": "Olá",
+      "timestamp": "2026-09-01T02:42:27.681986+00:00",
+      "metadata": {}
+    }
+  ]
+}

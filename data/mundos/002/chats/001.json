@@ -1,0 +1,105 @@
+{
+  "id": "001",
+  "world_id": "002",
+  "nome": "Nova conversa",
+  "criado_em": "2026-08-28T19:04:05.623006+00:00",
+  "atualizado_em": "2026-08-28T20:27:05.576147+00:00",
+  "mensagens": [
+    {
+      "role": "user",
+      "content": "Pesquise sobre Janusz Korczak e me informe as fontes utilizadas",
+      "timestamp": "2026-08-28T19:04:06.216382+00:00",
+      "metadata": {}
+    },
+    {
+      "role": "user",
+      "content": "Tente denovo",
+      "timestamp": "2026-08-28T19:15:50.265654+00:00",
+      "metadata": {}
+    },
+    {
+      "role": "user",
+      "content": "olá, responda apenas: \"Ok\"",
+      "timestamp": "2026-08-28T19:27:04.319445+00:00",
+      "metadata": {}
+    },
+    {
+      "role": "user",
+      "content": "Olá, responda apenas: OK",
+      "timestamp": "2026-08-28T19:37:38.685893+00:00",
+      "metadata": {}
+    },
+    {
+      "role": "user",
+      "content": "Responda apenas OK",
+      "timestamp": "2026-08-28T19:39:29.284388+00:00",
+      "metadata": {}
+    },
+    {
+      "role": "user",
+      "content": "Responda apenas OK",
+      "timestamp": "2026-08-28T19:43:34.944139+00:00",
+      "metadata": {}
+    },
+    {
+      "role": "user",
+      "content": "Responda apenas OK",
+      "timestamp": "2026-08-28T19:47:24.340522+00:00",
+      "metadata": {}
+    },
+    {
+      "role": "user",
+      "content": "oi, responda apenas Ok",
+      "timestamp": "2026-08-28T19:59:51.509279+00:00",
+      "metadata": {}
+    },
+    {
+      "role": "user",
+      "content": "Responda apenas OK",
+      "timestamp": "2026-08-28T20:02:43.478711+00:00",
+      "metadata": {}
+    },
+    {
+      "role": "user",
+      "content": "Responda apenas OK",
+      "timestamp": "2026-08-28T20:07:32.043520+00:00",
+      "metadata": {}
+    },
+    {
+      "role": "user",
+      "content": "Responda apenas OK",
+      "timestamp": "2026-08-28T20:14:28.239911+00:00",
+      "metadata": {}
+    },
+    {
+      "role": "user",
+      "content": "Responda apenas OK",
+      "timestamp": "2026-08-28T20:18:08.206524+00:00",
+      "metadata": {}
+    },
+    {
+      "role": "user",
+      "content": "Responda apenas OK",
+      "timestamp": "2026-08-28T20:21:21.773690+00:00",
+      "metadata": {}
+    },
+    {
+      "role": "assistant",
+      "content": "OK",
+      "timestamp": "2026-08-28T20:21:38.557970+00:00",
+      "metadata": {}
+    },
+    {
+      "role": "user",
+      "content": "pesquise sobre janusz korczak e me informe as fontes usadas.",
+      "timestamp": "2026-08-28T20:22:57.482965+00:00",
+      "metadata": {}
+    },
+    {
+      "role": "user",
+      "content": "Pesquise o atual presidente do brasil e me de as fontes",
+      "timestamp": "2026-08-28T20:27:05.576128+00:00",
+      "metadata": {}
+    }
+  ]
+}

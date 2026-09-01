@@ -1,0 +1,15 @@
+{
+  "id": "fde2dd0af93dd243",
+  "world_id": "002",
+  "tipo": "resposta",
+  "conteudo": "OK",
+  "importancia": 0.15,
+  "tags": [
+    "chat",
+    "agente"
+  ],
+  "origem": "ia",
+  "criado_em": "2026-08-28T20:21:38.561827+00:00",
+  "atualizado_em": "2026-08-28T20:21:38.561844+00:00",
+  "valido": true
+}

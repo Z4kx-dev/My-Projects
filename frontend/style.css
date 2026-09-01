@@ -349,7 +349,7 @@ textarea:focus-visible {
 .user .message-content {
   padding: 10px 15px;
   border-radius: 25px 2px 25px 25px;
-  background: #0056bb;
+  background: var(--message-color);
   color: #f1f1f1;
 }
 .assistant .message-content {
